@@ -687,6 +687,8 @@ export default {
     loop: 'Цикл',
     loopTitle: 'Повторять выбранный участок',
     masterLevels: 'Уровни мастера L/R',
+    meterLeft: 'Уровень, левый канал',
+    meterRight: 'Уровень, правый канал',
     selectTrackToPickColor: 'Выберите дорожку, чтобы задать цвет',
     settings: 'Настройки',
     selectTrackToEdit: 'Выберите дорожку, чтобы изменить её настройки',
@@ -945,6 +947,7 @@ export default {
   },
   channelStrip: {
     volume: 'Громкость: {value}%',
+    volumeLabel: 'Громкость',
     pan: 'Панорама: {value}',
     effects: 'Эффекты',
     mute: 'Заглушить',

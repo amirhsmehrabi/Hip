@@ -687,6 +687,8 @@ export default {
     loop: 'Loop',
     loopTitle: 'Repeat the loop region',
     masterLevels: 'Master L/R levels',
+    meterLeft: 'Left level',
+    meterRight: 'Right level',
     selectTrackToPickColor: 'Select a track to pick a color',
     settings: 'Settings',
     selectTrackToEdit: 'Select a track to edit its settings',
@@ -945,6 +947,7 @@ export default {
   },
   channelStrip: {
     volume: 'Volume: {value}%',
+    volumeLabel: 'Volume',
     pan: 'Pan: {value}',
     effects: 'Effects',
     mute: 'Mute',
