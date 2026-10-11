@@ -242,11 +242,17 @@ export function scheduleTimeline(
 }
 
 // Export renders past the last clip so reverb and delay can ring out, then
-// cuts the file where the tail drops below -80 dBFS. A long feedback delay
-// can outlast the cap; that tail is faded out instead of stopping hard.
+// cuts the file where the tail drops below -80 dBFS. A tail still sounding
+// at the end of the render is faded instead: briefly when only a quiet
+// residue is left, and over seconds when it is still loud, which is what a
+// long feedback delay cut at the cap looks like (2 s at 0.95 feedback is
+// about -7 dB after 30 s and needs minutes to reach -80 dB).
 const MAX_EXPORT_TAIL_SEC = 30
 const TAIL_SILENCE = 1e-4
 const TAIL_FADE_SEC = 0.05
+/** Peak over the last 100 ms above which a cut tail counts as loud (-40 dBFS). */
+const LOUD_TAIL = 1e-2
+const LOUD_TAIL_FADE_SEC = 3
 
 export function exportTailSeconds(laneSettings: ChannelSettings[], masterSettings: MasterSettings): number {
   const anySolo = laneSettings.some((s) => s.solo)
@@ -274,9 +280,20 @@ function trimTail(buf: AudioBuffer, contentFrames: number): AudioBuffer {
   const channels = Array.from({ length: buf.numberOfChannels }, (_, c) => buf.getChannelData(c))
   const end = Math.max(contentFrames, audibleLength(channels, TAIL_SILENCE))
   if (end === buf.length) {
-    const fade = Math.min(Math.round(TAIL_FADE_SEC * buf.sampleRate), buf.length - contentFrames)
+    const window = Math.min(Math.round(0.1 * buf.sampleRate), buf.length)
+    let lastPeak = 0
     for (const data of channels) {
-      for (let i = 0; i < fade; i++) data[buf.length - fade + i] *= 1 - (i + 1) / fade
+      for (let i = buf.length - window; i < buf.length; i++) lastPeak = Math.max(lastPeak, Math.abs(data[i]))
+    }
+    const loud = lastPeak > LOUD_TAIL
+    const fade = Math.min(Math.round((loud ? LOUD_TAIL_FADE_SEC : TAIL_FADE_SEC) * buf.sampleRate), buf.length - contentFrames)
+    for (const data of channels) {
+      for (let i = 0; i < fade; i++) {
+        const x = (i + 1) / fade
+        // The long fade falls evenly in dB (to -60 dB, then 0 on the last
+        // sample) so it does not stay loud and drop off at the very end.
+        data[buf.length - fade + i] *= loud ? (x < 1 ? Math.pow(10, -3 * x) : 0) : 1 - x
+      }
     }
     return buf
   }
