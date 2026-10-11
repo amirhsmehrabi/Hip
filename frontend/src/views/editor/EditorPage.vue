@@ -232,6 +232,8 @@ const laneLevels = ref<{ peak: number; clipping: boolean; peakL: number; peakR: 
 /** The level of a lane the meters have not measured yet: on load, and for lanes added since playback stopped. */
 const SILENT_LEVEL = Object.freeze({ peak: 0, clipping: false, peakL: 0, peakR: 0 })
 const masterLevel = ref<{ peak: number; clipping: boolean; peakL: number; peakR: number }>({ peak: 0, clipping: false, peakL: 0, peakR: 0 })
+// Same sqrt curve the meter bars draw, as a whole percent for aria-valuenow.
+const meterPercent = (peak: number) => Math.round(Math.min(100, Math.pow(peak, 0.5) * 100))
 
 const timelineScrollEl = ref<HTMLElement | null>(null)
 
@@ -1179,6 +1181,7 @@ onBeforeRouteLeave((_to, _from, next) => {
             type="range"
             min="10"
             max="200"
+            :aria-label="t('editor.zoom')"
             :value="store.project.pxPerSecond"
             @input="store.setZoom(Number(($event.target as HTMLInputElement).value))"
           />
@@ -1222,11 +1225,18 @@ onBeforeRouteLeave((_to, _from, next) => {
 
         <div class="ml-auto flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
           <!-- Stereo Master Meter -->
-          <div class="flex flex-col gap-1.5 w-28" :title="t('editor.masterLevels')" role="img" :aria-label="t('editor.masterLevels')">
+          <div class="flex flex-col gap-1.5 w-28" :title="t('editor.masterLevels')" role="group" :aria-label="t('editor.masterLevels')">
             <!-- Left Channel -->
             <div class="flex items-center gap-1.5">
-              <span class="text-[11px] font-bold text-text-dim w-2 text-right">L</span>
-              <div class="flex-1 h-1.5 rounded-full overflow-hidden bg-panel-2 shadow-inner relative border border-border/50">
+              <span class="text-[11px] font-bold text-text-dim w-2 text-right" aria-hidden="true">L</span>
+              <div
+                class="flex-1 h-1.5 rounded-full overflow-hidden bg-panel-2 shadow-inner relative border border-border/50"
+                role="meter"
+                :aria-label="t('editor.meterLeft')"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                :aria-valuenow="meterPercent(masterLevel.peakL)"
+              >
                 <div 
                   class="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-accent1 to-accent2 transition-all duration-75 shadow-[0_0_8px_var(--color-accent1)]"
                   :style="{ width: Math.min(100, Math.pow(masterLevel.peakL, 0.5) * 100) + '%' }"
@@ -1235,8 +1245,15 @@ onBeforeRouteLeave((_to, _from, next) => {
             </div>
             <!-- Right Channel -->
             <div class="flex items-center gap-1.5">
-              <span class="text-[11px] font-bold text-text-dim w-2 text-right">R</span>
-              <div class="flex-1 h-1.5 rounded-full overflow-hidden bg-panel-2 shadow-inner relative border border-border/50">
+              <span class="text-[11px] font-bold text-text-dim w-2 text-right" aria-hidden="true">R</span>
+              <div
+                class="flex-1 h-1.5 rounded-full overflow-hidden bg-panel-2 shadow-inner relative border border-border/50"
+                role="meter"
+                :aria-label="t('editor.meterRight')"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                :aria-valuenow="meterPercent(masterLevel.peakR)"
+              >
                 <div 
                   class="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-accent1 to-accent2 transition-all duration-75 shadow-[0_0_8px_var(--color-accent1)]"
                   :style="{ width: Math.min(100, Math.pow(masterLevel.peakR, 0.5) * 100) + '%' }"
