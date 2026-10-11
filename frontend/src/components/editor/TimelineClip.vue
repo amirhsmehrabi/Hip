@@ -10,6 +10,10 @@ const props = defineProps<{
   clip: Clip
   pxPerSecond: number
   buffer: AudioBuffer | null
+  /** Stretch factor `buffer` carries (1 while the stretched buffer is still being built). */
+  bufferStretch: number
+  /** Length of the source audio in source seconds, the cap for trimEnd. */
+  sourceDuration?: number
   snapCandidates: number[]
   gridStepSec: number
   snapEnabled: boolean
@@ -45,6 +49,8 @@ const store = useEditorStore()
 const effectiveStretchFactor = computed(() => {
   return stretchFactor(props.clip, store.project.bpm)
 })
+
+const maxTrimEnd = computed(() => props.sourceDuration ?? Infinity)
 
 const canvasEl = ref<HTMLCanvasElement | null>(null)
 
@@ -114,7 +120,7 @@ function onKeydown(e: KeyboardEvent): void {
   const step = e.altKey ? 0.01 : grid ? props.gridStepSec : 0.1
   if (e.shiftKey) {
     const sf = effectiveStretchFactor.value
-    const maxEnd = props.buffer ? props.buffer.duration / sf : Infinity
+    const maxEnd = maxTrimEnd.value
     const trimEnd = Math.max(props.clip.trimStart + MIN_CLIP_SEC, Math.min(props.clip.trimEnd + (dir * step) / sf, maxEnd))
     emit('trim', { trimStart: props.clip.trimStart, trimEnd, timelineStart: props.clip.timelineStart })
   } else {
@@ -144,7 +150,7 @@ function onHandleKeydown(handle: Exclude<DragMode, 'move'>, e: KeyboardEvent): v
     const trimStart = Math.max(0, Math.min(props.clip.trimStart + (dir * step) / sf, props.clip.trimEnd - MIN_CLIP_SEC))
     emit('trim', { trimStart, trimEnd: props.clip.trimEnd, timelineStart: props.clip.timelineStart + (trimStart - props.clip.trimStart) * sf })
   } else {
-    const maxEnd = props.buffer ? props.buffer.duration / sf : Infinity
+    const maxEnd = maxTrimEnd.value
     const trimEnd = Math.max(props.clip.trimStart + MIN_CLIP_SEC, Math.min(props.clip.trimEnd + (dir * step) / sf, maxEnd))
     emit('trim', { trimStart: props.clip.trimStart, trimEnd, timelineStart: props.clip.timelineStart })
   }
@@ -199,7 +205,7 @@ function onPointerMove(evt: PointerEvent): void {
     })
   } else if (dragMode === 'trim-right') {
     const minEnd = dragStartTrimStart + MIN_CLIP_SEC
-    const maxEnd = props.buffer ? props.buffer.duration / effectiveStretchFactor.value : Infinity
+    const maxEnd = maxTrimEnd.value
     const originalDeltaSec = deltaSec / effectiveStretchFactor.value
     const rawTrimEnd = Math.max(minEnd, Math.min(dragStartTrimEnd + originalDeltaSec, maxEnd))
     
@@ -310,8 +316,10 @@ function drawPeaks(): void {
   // Audio drawing logic
   if (!buffer) return
   const sampleRate = buffer.sampleRate
-  const startSample = Math.max(0, Math.floor((props.clip.trimStart * sf) * sampleRate))
-  const endSample = Math.min(buffer.length, Math.floor((props.clip.trimEnd * sf) * sampleRate))
+  // Address the buffer with the factor it carries (see bufferStretch).
+  const bsf = props.bufferStretch || 1
+  const startSample = Math.max(0, Math.floor((props.clip.trimStart * bsf) * sampleRate))
+  const endSample = Math.min(buffer.length, Math.floor((props.clip.trimEnd * bsf) * sampleRate))
   const totalSamples = Math.max(1, endSample - startSample)
   
   // 1 point per pixel for a perfectly smooth curve
@@ -396,7 +404,7 @@ function drawPeaks(): void {
   ctx.fill()
 }
 
-watch(() => props.buffer, drawPeaks)
+watch(() => [props.buffer, props.bufferStretch], drawPeaks)
 watch(() => props.theme, drawPeaks, { deep: true })
 onMounted(drawPeaks)
 onBeforeUnmount(() => {

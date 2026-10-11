@@ -1,4 +1,4 @@
-import { stretchFactor } from '../audio/timelineTypes'
+import { clipBuffer } from '../audio/timelineTypes'
 import type { TimelineProject } from '../audio/timelineTypes'
 import { encodeWav } from '../audio/wavEncoder'
 import { getSharedAudioCtx } from '../composables/audioPlayback'
@@ -61,10 +61,10 @@ export function renderContext(
     for (const clip of lane.clips) {
       if (clip.muted || clip.type === 'midi' || !clip.sourceUrl) continue
       // Same buffer choice and source-domain math as toScheduledClips / renderTimeline.
-      let buf = buffers.get(clip.sourceUrl)
-      if (clip.warpEnabled && clip.originalBpm) buf = buffers.get(`${clip.sourceUrl}_warp_${clip.originalBpm}_${bpm}`) ?? buf
-      if (!buf) continue
-      const sf = stretchFactor(clip, bpm)
+      const chosen = clipBuffer(clip, bpm, buffers)
+      if (!chosen) continue
+      const buf = chosen.buffer
+      const sf = chosen.sf
       const srcStart = clip.trimStart * sf
       const dur = (clip.trimEnd - clip.trimStart) * sf
       const fadeIn = Math.min(Math.max(0.005, clip.fadeInDuration || 0.015), dur / 2)

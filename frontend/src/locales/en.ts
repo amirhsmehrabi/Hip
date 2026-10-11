@@ -673,6 +673,7 @@ export default {
     exportedAsNewTrack: 'Exported as a new track.',
     exportStems: 'Stems + Reaper (.zip)',
     exportDawproject: 'DAWproject (Bitwig, Studio One, Cubase)',
+    exportStretchFailed: 'A warped clip could not be time-stretched, so the export was stopped. Try again, or turn Warp off for that clip.',
     exportedForDaw: 'Done: every track was exported as its own file from the start of the project, with the tempo. Open it in your DAW.',
     dawReadme: 'Project "{name}" from Remiqora.\n\nTempo: {bpm} BPM, 4/4. All stems start at 0:00 and have the same length: track volume, pan and effects are printed, the master is untouched.\n\nReaper: open the .RPP next to this file.\nOther DAWs: set the tempo to {bpm} and drag the WAV files from the stems folder to the start of the project.\n\nFiles:\n{files}\n',
     sourceMissing: 'Source file missing',

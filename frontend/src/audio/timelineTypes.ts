@@ -57,6 +57,35 @@ export function stretchFactor(clip: Pick<Clip, 'warpEnabled' | 'originalBpm'>, p
   return 1.0
 }
 
+/** Key of a clip's time-stretched buffer (for the current project BPM) in the editor's buffer map. */
+export function warpKey(clip: Pick<Clip, 'sourceUrl' | 'originalBpm'>, projectBpm: number = 120): string {
+  return `${clip.sourceUrl}_warp_${clip.originalBpm}_${projectBpm || 120}`
+}
+
+/**
+ * The buffer to play or draw for an audio clip, with the stretch factor that
+ * buffer actually carries. Offsets into it are `source seconds * sf`.
+ *
+ * Right after Warp is turned on or the BPM changes, the stretched buffer is
+ * still being built. Until it exists this returns the source buffer with
+ * sf = 1, so trims, waveforms and playback address the source in its own
+ * time instead of applying the new ratio to a buffer that was never stretched.
+ */
+export function clipBuffer(
+  clip: Pick<Clip, 'sourceUrl' | 'warpEnabled' | 'originalBpm'>,
+  projectBpm: number,
+  buffers: Map<string, AudioBuffer>,
+): { buffer: AudioBuffer; sf: number } | null {
+  if (!clip.sourceUrl) return null
+  const sf = stretchFactor(clip, projectBpm)
+  if (sf !== 1) {
+    const stretched = buffers.get(warpKey(clip, projectBpm))
+    if (stretched) return { buffer: stretched, sf }
+  }
+  const source = buffers.get(clip.sourceUrl)
+  return source ? { buffer: source, sf: 1 } : null
+}
+
 export function clipDuration(clip: Clip, projectBpm: number = 120): number {
   return (clip.trimEnd - clip.trimStart) * stretchFactor(clip, projectBpm)
 }
