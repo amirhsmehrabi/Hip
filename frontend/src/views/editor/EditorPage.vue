@@ -8,7 +8,7 @@ import { useTimelineEngine } from '../../composables/useTimelineEngine'
 import { getSharedAudioCtx } from '../../composables/audioPlayback'
 import { decodeStem, defaultMasterSettings, defaultChannelSettings } from '../../audio/mixerEngine'
 import type { ChannelSettings } from '../../audio/mixerEngine'
-import { clipDuration, stretchFactor } from '../../audio/timelineTypes'
+import { clipDuration, stretchFactor, warpKey } from '../../audio/timelineTypes'
 import type { Clip } from '../../audio/timelineTypes'
 import { encodeWav } from '../../audio/wavEncoder'
 import { encodeMp3 } from '../../audio/mp3Encoder'
@@ -612,6 +612,15 @@ async function doExport(): Promise<void> {
   exportError.value = null
   exportedOk.value = false
   try {
+    // Render warped clips from their stretched buffers, not the source stand-in
+    // used while a stretch (after a Warp or BPM change) is still running. One
+    // at a time: each stretch is a full-length offline render.
+    const clips = store.project.lanes.flatMap((lane) => lane.clips)
+    for (const clip of clips) await ensureStretched(clip)
+    const bpm = store.project.bpm || 120
+    const unstretched = clips.some((c) => c.sourceUrl && buffers.value.has(c.sourceUrl)
+      && stretchFactor(c, bpm) !== 1 && !buffers.value.has(warpKey(c, bpm)))
+    if (unstretched) throw new Error(t('editor.exportStretchFailed'))
     const fmt = exportFormat.value
     if (fmt === 'stems' || fmt === 'dawproject') {
       const out = await exportForDaw(fmt, store.project, buffers.value, engine.render, store.projectName,
@@ -768,29 +777,40 @@ watch(
           } catch {}
         }
         
-        if (clip.warpEnabled && clip.originalBpm) {
-          const bpm = store.project.bpm || 120
-          if (clip.originalBpm !== bpm) {
-            const key = `${clip.sourceUrl}_warp_${clip.originalBpm}_${bpm}`
-            if (!buffers.value.has(key)) {
-              const baseBuf = buffers.value.get(clip.sourceUrl)
-              if (baseBuf) {
-                try {
-                  const tempoFactor = bpm / clip.originalBpm
-                  const stretched = await timeStretchBuffer(baseBuf, tempoFactor)
-                  buffers.value.set(key, stretched)
-                } catch (e) {
-                  console.error('Stretch failed', e)
-                }
-              }
-            }
-          }
-        }
+        await ensureStretched(clip)
       }
     }
   },
   { deep: true },
 )
+
+// Stretched buffers being built, by buffer key. The project watcher fires on
+// every edit and export waits for them too, so each key gets one job.
+const pendingStretches = new Map<string, Promise<void>>()
+
+function ensureStretched(clip: Clip): Promise<void> {
+  const bpm = store.project.bpm || 120
+  if (!clip.sourceUrl || !clip.warpEnabled || !clip.originalBpm || clip.originalBpm === bpm) return Promise.resolve()
+  const key = warpKey(clip, bpm)
+  if (buffers.value.has(key)) return Promise.resolve()
+  const pending = pendingStretches.get(key)
+  if (pending) return pending
+  const map = buffers.value
+  const baseBuf = map.get(clip.sourceUrl)
+  if (!baseBuf) return Promise.resolve()
+  const job = timeStretchBuffer(baseBuf, bpm / clip.originalBpm)
+    .then((stretched) => {
+      // A project loaded in the meantime has its own map; leave it alone.
+      if (map !== buffers.value) return
+      map.set(key, stretched)
+      // Playback scheduled the source stand-in; switch to the stretched buffer now.
+      if (store.playing) seek(store.playheadSec)
+    })
+    .catch((e) => { console.error('Stretch failed', e) })
+    .finally(() => { pendingStretches.delete(key) })
+  pendingStretches.set(key, job)
+  return job
+}
 
 function onKeydown(e: KeyboardEvent) {
   // A modal dialog (help, library picker) owns the keyboard while it is open.

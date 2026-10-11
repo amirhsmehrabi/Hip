@@ -21,7 +21,7 @@ import {
   scheduleTimeline,
 } from '../audio/timelineEngine'
 import type { ScheduledClip, TimelineGraph, TimelinePlaybackHandle } from '../audio/timelineEngine'
-import { stretchFactor as clipStretchFactor } from '../audio/timelineTypes'
+import { clipBuffer, stretchFactor as clipStretchFactor } from '../audio/timelineTypes'
 import type { TimelineProject } from '../audio/timelineTypes'
 
 export function useTimelineEngine() {
@@ -115,26 +115,20 @@ export function useTimelineEngine() {
           continue
         }
 
-        let buffer = clip.sourceUrl ? buffers.get(clip.sourceUrl) : undefined
-        if (clip.warpEnabled && clip.originalBpm && clip.sourceUrl) {
-           const bpm = project.bpm || 120
-           const key = `${clip.sourceUrl}_warp_${clip.originalBpm}_${bpm}`
-           if (buffers.has(key)) {
-             buffer = buffers.get(key)
-           }
-        }
-        
-        if (buffer) {
-          laneClips.push({ 
+        // The factor must be the one the chosen buffer carries: while a stretched
+        // buffer is still being built this is the source buffer with factor 1.
+        const chosen = clipBuffer(clip, project.bpm, buffers)
+        if (chosen) {
+          laneClips.push({
             laneIndex,
             type: 'audio',
-            buffer, 
-            timelineStart: clip.timelineStart, 
-            trimStart: clip.trimStart, 
+            buffer: chosen.buffer,
+            timelineStart: clip.timelineStart,
+            trimStart: clip.trimStart,
             trimEnd: clip.trimEnd,
             fadeInDuration: clip.fadeInDuration,
             fadeOutDuration: clip.fadeOutDuration,
-            stretchFactor
+            stretchFactor: chosen.sf
           })
         }
       }
