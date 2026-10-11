@@ -437,7 +437,7 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="shrink-0 px-1 hover:text-white transition-transform hover:scale-110 active:scale-95"
-            :class="clip.solo ? 'text-accent1 bg-accent1/20 rounded font-bold' : ''"
+            :class="clip.solo ? 'text-accent bg-accent/20 rounded font-bold' : ''"
             :aria-pressed="!!clip.solo"
             :aria-label="t('timeline.soloClip')"
             :title="t('timeline.soloClip')"
@@ -447,7 +447,7 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="shrink-0 px-1 hover:text-white transition-transform hover:scale-110 active:scale-95"
-            :class="clip.warpEnabled ? 'text-accent1 font-bold drop-shadow-[0_0_4px_var(--color-accent1)]' : ''"
+            :class="clip.warpEnabled ? 'text-accent bg-accent/20 rounded font-bold' : ''"
             :aria-pressed="!!clip.warpEnabled"
             :aria-label="t('timeline.warpClip')"
             :title="t('timeline.warpClip')"
