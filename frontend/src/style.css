@@ -34,9 +34,12 @@
   --color-text-dim: #9a9aab;
   --color-accent1: #a855f7;
   --color-accent2: #ec4899;
-  /* Plain accent used by text-accent / bg-accent / border-accent in several
-   * components; without this token those classes generate no CSS at all. */
-  --color-accent: #a855f7;
+  /* Plain accent, a light text color: the clip M/S/W toggles and the unsaved
+   * dot (text-accent, bg-accent/20). Without this token those classes
+   * generate no CSS at all. Lighter than accent1 so small text stays above
+   * 4.5:1 on panel, panel-2, the clip header and its own /20 tint, where
+   * accent1 drops to about 3:1. Too light for a fill behind white text. */
+  --color-accent: #d8b4fe;
   --color-status-queued: #eab308;
   --color-status-running: #38bdf8;
   --color-status-done: #22c55e;
