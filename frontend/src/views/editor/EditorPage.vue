@@ -617,8 +617,8 @@ async function doExport(): Promise<void> {
     // Render warped clips from their stretched buffers, not the source stand-in
     // used while a stretch (after a Warp or BPM change) is still running. One
     // at a time: each stretch is a full-length offline render.
+    await stretchAll()
     const clips = store.project.lanes.flatMap((lane) => lane.clips)
-    for (const clip of clips) await ensureStretched(clip)
     const bpm = store.project.bpm || 120
     const unstretched = clips.some((c) => c.sourceUrl && buffers.value.has(c.sourceUrl)
       && stretchFactor(c, bpm) !== 1 && !buffers.value.has(warpKey(c, bpm)))
@@ -677,6 +677,10 @@ async function load(): Promise<void> {
     buffers.value = decoded
     engine.ensureGraph(store.project.lanes.map((l) => l.id))
     engine.applySettings(store.project)
+    // Stretches the project watcher started on load went into the map that
+    // was just replaced, so warped clips would play unstretched until the
+    // next edit. Build them for this map.
+    void stretchAll()
   } catch (e) {
     if (token === loadToken) store.error = e instanceof Error ? e.message : String(e)
   } finally {
@@ -787,8 +791,10 @@ watch(
 )
 
 // Stretched buffers being built, by buffer key. The project watcher fires on
-// every edit and export waits for them too, so each key gets one job.
-const pendingStretches = new Map<string, Promise<void>>()
+// every edit and export waits for them too, so each key gets one job. A job
+// remembers the buffer map it writes to: a job started for the map that a
+// load() has since replaced is not reused for the new one.
+const pendingStretches = new Map<string, { map: Map<string, AudioBuffer>; job: Promise<void> }>()
 
 function ensureStretched(clip: Clip): Promise<void> {
   const bpm = store.project.bpm || 120
@@ -796,7 +802,7 @@ function ensureStretched(clip: Clip): Promise<void> {
   const key = warpKey(clip, bpm)
   if (buffers.value.has(key)) return Promise.resolve()
   const pending = pendingStretches.get(key)
-  if (pending) return pending
+  if (pending && pending.map === buffers.value) return pending.job
   const map = buffers.value
   const baseBuf = map.get(clip.sourceUrl)
   if (!baseBuf) return Promise.resolve()
@@ -809,9 +815,14 @@ function ensureStretched(clip: Clip): Promise<void> {
       if (store.playing) seek(store.playheadSec)
     })
     .catch((e) => { console.error('Stretch failed', e) })
-    .finally(() => { pendingStretches.delete(key) })
-  pendingStretches.set(key, job)
+    .finally(() => { if (pendingStretches.get(key)?.job === job) pendingStretches.delete(key) })
+  pendingStretches.set(key, { map, job })
   return job
+}
+
+/** Builds the stretched buffers of every warped clip, one at a time. */
+async function stretchAll(): Promise<void> {
+  for (const clip of store.project.lanes.flatMap((lane) => lane.clips)) await ensureStretched(clip)
 }
 
 function onKeydown(e: KeyboardEvent) {
