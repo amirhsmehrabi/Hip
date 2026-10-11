@@ -3,8 +3,11 @@ import { computed, ref, watch } from 'vue'
 export type SortOrder = 'newest' | 'oldest'
 export type DatePreset = 'today' | '7d' | '30d' | 'all'
 
+/** YYYY-MM-DD of the local day, the format <input type="date"> uses. Not toISOString(): that is the UTC day,
+ * which east of UTC is still yesterday after local midnight, so "Today" showed the day before. */
 function toDateInputValue(d: Date): string {
-  return d.toISOString().slice(0, 10)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
 /** Filters a reactive list by createdAt date range and sorts it newest/oldest first. */
