@@ -148,15 +148,106 @@ const COT_HINTS = computed<Record<CotMode, string>>(() => ({
   melody: t('yueGen.cotHints.melody'),
   full: t('yueGen.cotHints.full'),
 }))
-const SAMPLING_FIELDS: { key: string; label: string; step: string }[] = [
-  { key: 'temperature', label: 'Temperature', step: '0.01' },
-  { key: 'top_p', label: 'Top-p', step: '0.01' },
-  { key: 'top_k', label: 'Top-k', step: '1' },
-  { key: 'repetition_penalty', label: 'Repetition penalty', step: '0.01' },
-  { key: 'penalty_window', label: 'Penalty window', step: '1' },
-  { key: 'min_tokens', label: 'Min tokens', step: '1' },
-  { key: 'max_tokens', label: 'Max tokens', step: '1' },
+// min/max are what audio.cpp's request validation accepts (src/models/yue2/request.cpp); it rejects the
+// whole request otherwise, so the form checks them before sending. max_tokens additionally must be
+// >= min_tokens of the same stage.
+type NumberField = { key: string; label: string; step: string; min: number; max?: number }
+const SAMPLING_FIELDS: NumberField[] = [
+  { key: 'temperature', label: 'Temperature', step: '0.01', min: 0, max: 5 },
+  { key: 'top_p', label: 'Top-p', step: '0.01', min: 0.01, max: 1 },
+  { key: 'top_k', label: 'Top-k', step: '1', min: 1 },
+  { key: 'repetition_penalty', label: 'Repetition penalty', step: '0.01', min: 0.01 },
+  { key: 'penalty_window', label: 'Penalty window', step: '1', min: 1 },
+  { key: 'min_tokens', label: 'Min tokens', step: '1', min: 0 },
+  { key: 'max_tokens', label: 'Max tokens', step: '1', min: 0 },
 ]
+const CFG_FIELD: NumberField = { key: 'cfg_scale', label: 'CFG scale', step: '0.1', min: 0, max: 20 }
+const STEPS_FIELD: NumberField = { key: 'num_inference_steps', label: 'Inference steps', step: '1', min: 1 }
+const rangeLabel = (f: NumberField) => (f.max == null ? `≥ ${f.min}` : `${f.min} – ${f.max}`)
+// A cleared number input leaves '' (v-model.number keeps what it cannot parse), which must count as
+// "not set" rather than be sent to the engine.
+const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+// The first out-of-range field as a user-facing message, or '' when everything is fine.
+function rangeError(): string {
+  const check = (group: string, f: NumberField, raw: number | null) => {
+    const v = num(raw)
+    if (v == null) return ''
+    const integer = f.step === '1'
+    if (v < f.min || (f.max != null && v > f.max) || (integer && !Number.isInteger(v))) {
+      const label = f === STEPS_FIELD ? t('aceGen.inferenceSteps') : f.label
+      return t('yueGen.outOfRange', { field: group ? `${group} → ${label}` : label, range: rangeLabel(f) })
+    }
+    return ''
+  }
+  const checkStage = (group: string, values: Record<string, number | null>) => {
+    for (const f of SAMPLING_FIELDS) {
+      const err = check(group, f, values[f.key])
+      if (err) return err
+    }
+    const lo = num(values.min_tokens) ?? YUE2_DEFAULTS_NUM(group, 'min_tokens')
+    const hi = num(values.max_tokens) ?? YUE2_DEFAULTS_NUM(group, 'max_tokens')
+    if (hi < lo) return t('yueGen.maxBelowMin', { group })
+    return ''
+  }
+  return (
+    check('', CFG_FIELD, cfgScale.value) ||
+    check('', STEPS_FIELD, numInferenceSteps.value) ||
+    checkStage(t('yueGen.semanticSampling'), semantic) ||
+    (cot.value !== 'off' ? checkStage(t('yueGen.abcPlannerSampling'), abcSampling) : '')
+  )
+}
+// What audio.cpp uses when a field is left empty — shown as the placeholder so the user sees the
+// real number, not just "default". Mirrors external/audio.cpp/docs/models/yue2.md and the model's
+// sidecars/yue2-generation-config.json; semantic CFG depends on the cot mode.
+const YUE2_DEFAULTS = {
+  cfgScale: { off: '1.01', melody: '1.0', full: '1.0' } as Record<CotMode, string>,
+  numInferenceSteps: '8',
+  semantic: { temperature: '1.0', top_p: '0.95', top_k: '100', repetition_penalty: '1.2', penalty_window: '50', min_tokens: '200', max_tokens: '9000' } as Record<string, string>,
+  abc: { temperature: '0.7', top_p: '0.9', top_k: '30', repetition_penalty: '1.005', penalty_window: '100', min_tokens: '32', max_tokens: '4096' } as Record<string, string>,
+}
+const defaultPlaceholder = (value: string) => t('yueGen.defaultValuePlaceholder', { value })
+
+// --- The advanced-settings help -------------------------------------------------------------
+// Each field card draws the engine defaults on a short scale (the span worth showing, not the
+// allowed range, which is often unbounded). Sampling keys have two defaults: semantic and ABC.
+const HELP_SCALES: Record<string, { lo: number; hi: number }> = {
+  cfg_scale: { lo: 0, hi: 3 },
+  num_inference_steps: { lo: 1, hi: 48 },
+  temperature: { lo: 0, hi: 2 },
+  repetition_penalty: { lo: 1, hi: 1.5 },
+  min_tokens: { lo: 0, hi: 1000 },
+  max_tokens: { lo: 0, hi: 24000 },
+}
+const scalePct = (key: string, value: string) => {
+  const s = HELP_SCALES[key]
+  return Math.min(100, Math.max(0, ((Number(value) - s.lo) / (s.hi - s.lo)) * 100))
+}
+// A tick's label is centred on it, except near the ends where it would spill out of the card.
+const tickStyle = (pct: number) => ({ left: `${pct}%`, transform: pct < 12 ? 'none' : pct > 88 ? 'translateX(-100%)' : 'translateX(-50%)' })
+const tickAlign = (pct: number) => (pct < 12 ? 'items-start' : pct > 88 ? 'items-end' : 'items-center')
+const helpDefaults = (key: string): { semantic: string; abc?: string } => {
+  if (key === 'cfg_scale') return { semantic: YUE2_DEFAULTS.cfgScale[cot.value] }
+  if (key === 'num_inference_steps') return { semantic: YUE2_DEFAULTS.numInferenceSteps }
+  return { semantic: YUE2_DEFAULTS.semantic[key], abc: YUE2_DEFAULTS.abc[key] }
+}
+const helpRange = (key: string) => rangeLabel([CFG_FIELD, STEPS_FIELD, ...SAMPLING_FIELDS].find((f) => f.key === key)!)
+// One-click fixes for the "what to do if…" cards; the locale text says what each one sets.
+const HELP_FIXES: Record<string, () => void> = {
+  cutoff: () => { semantic.max_tokens = 12000 },
+  offbrief: () => { cfgScale.value = 1.2 },
+  loop: () => { semantic.repetition_penalty = 1.3; semantic.penalty_window = 80 },
+  offkey: () => { semantic.temperature = 0.85; numInferenceSteps.value = 32 },
+  melody: () => { if (cot.value === 'off') cot.value = 'full'; abcSampling.temperature = 0.55 },
+  same: () => { randomSeed.value = true },
+  final: () => { numInferenceSteps.value = 32; cfgScale.value = 1.2 },
+}
+function applyHelpFix(id: string) {
+  HELP_FIXES[id]?.()
+  helpOpen.value = null
+}
+// The engine default as a number, for the min/max-tokens cross-check when one side is left empty.
+const YUE2_DEFAULTS_NUM = (group: string, key: string) =>
+  Number(group === t('yueGen.abcPlannerSampling') ? YUE2_DEFAULTS.abc[key] : YUE2_DEFAULTS.semantic[key])
 
 watch(
   () => store.pendingAbcInsert,
@@ -207,16 +298,18 @@ async function extractAbc() {
 
 function buildOptions(): GenerateOptions {
   const options: GenerateOptions = { style: style.value.trim(), cot: cot.value }
-  if (cfgScale.value != null) options.cfg_scale = cfgScale.value
-  if (numInferenceSteps.value != null) options.num_inference_steps = numInferenceSteps.value
+  const cfg = num(cfgScale.value)
+  if (cfg != null) options.cfg_scale = cfg
+  const steps = num(numInferenceSteps.value)
+  if (steps != null) options.num_inference_steps = steps
   for (const f of SAMPLING_FIELDS) {
-    const v = semantic[f.key]
+    const v = num(semantic[f.key])
     if (v != null) options[`semantic_${f.key}`] = v
   }
   if (cot.value !== 'off') {
     if (abc.value.trim()) options.abc = abc.value.trim()
     for (const f of SAMPLING_FIELDS) {
-      const v = abcSampling[f.key]
+      const v = num(abcSampling[f.key])
       if (v != null) options[`abc_${f.key}`] = v
     }
   }
@@ -231,6 +324,11 @@ async function submit() {
   }
   if (!style.value.trim()) {
     formError.value = t('yueGen.enterStyle')
+    return
+  }
+  const invalid = rangeError()
+  if (invalid) {
+    formError.value = invalid
     return
   }
   submitting.value = true
@@ -387,11 +485,11 @@ async function submit() {
         <div class="grid grid-cols-2 gap-2">
           <div>
             <label class="text-[13px] font-medium text-text">{{ t('yueGen.cfgScale') }}</label>
-            <input v-model.number="cfgScale" type="number" step="0.1" class="w-full rounded-lg border border-border bg-panel-2 p-2 text-sm text-text" :placeholder="t('yueGen.defaultPlaceholder')" />
+            <input v-model.number="cfgScale" type="number" :step="CFG_FIELD.step" :min="CFG_FIELD.min" :max="CFG_FIELD.max" :title="rangeLabel(CFG_FIELD)" class="w-full rounded-lg border border-border bg-panel-2 p-2 text-sm text-text" :placeholder="defaultPlaceholder(YUE2_DEFAULTS.cfgScale[cot])" />
           </div>
           <div>
             <label class="text-[13px] font-medium text-text">{{ t('aceGen.inferenceSteps') }}</label>
-            <input v-model.number="numInferenceSteps" type="number" class="w-full rounded-lg border border-border bg-panel-2 p-2 text-sm text-text" :placeholder="t('yueGen.defaultPlaceholder')" />
+            <input v-model.number="numInferenceSteps" type="number" :step="STEPS_FIELD.step" :min="STEPS_FIELD.min" :title="rangeLabel(STEPS_FIELD)" class="w-full rounded-lg border border-border bg-panel-2 p-2 text-sm text-text" :placeholder="defaultPlaceholder(YUE2_DEFAULTS.numInferenceSteps)" />
           </div>
         </div>
 
@@ -399,7 +497,7 @@ async function submit() {
           <div class="grid grid-cols-2 gap-2">
             <div v-for="f in SAMPLING_FIELDS" :key="'sem_' + f.key">
               <label class="text-[13px] font-medium text-text">{{ f.label }}</label>
-              <input v-model.number="semantic[f.key]" type="number" :step="f.step" class="w-full rounded-lg border border-border bg-panel-2 p-2 text-sm text-text" :placeholder="t('yueGen.defaultPlaceholder')" />
+              <input v-model.number="semantic[f.key]" type="number" :step="f.step" :min="f.min" :max="f.max" :title="rangeLabel(f)" class="w-full rounded-lg border border-border bg-panel-2 p-2 text-sm text-text" :placeholder="defaultPlaceholder(YUE2_DEFAULTS.semantic[f.key])" />
             </div>
           </div>
         </CollapsibleDetails>
@@ -408,7 +506,7 @@ async function submit() {
           <div class="grid grid-cols-2 gap-2">
             <div v-for="f in SAMPLING_FIELDS" :key="'abc_' + f.key">
               <label class="text-[13px] font-medium text-text">{{ f.label }}</label>
-              <input v-model.number="abcSampling[f.key]" type="number" :step="f.step" class="w-full rounded-lg border border-border bg-panel-2 p-2 text-sm text-text" :placeholder="t('yueGen.defaultPlaceholder')" />
+              <input v-model.number="abcSampling[f.key]" type="number" :step="f.step" :min="f.min" :max="f.max" :title="rangeLabel(f)" class="w-full rounded-lg border border-border bg-panel-2 p-2 text-sm text-text" :placeholder="defaultPlaceholder(YUE2_DEFAULTS.abc[f.key])" />
             </div>
           </div>
         </CollapsibleDetails>
@@ -499,31 +597,102 @@ async function submit() {
       </table>
       <p class="text-xs text-text-dim">{{ t('yueGen.help.cot.abcFooter') }}</p>
     </HelpModal>
-    <HelpModal :open="helpOpen === 'advanced'" :title="t('yueGen.help.advanced.title')" @close="helpOpen = null">
-      <table class="w-full border-collapse text-xs">
-        <thead>
-          <tr class="border-b border-border text-left text-text">
-            <th class="py-1 pr-2">{{ t('yueGen.help.advanced.paramHeader') }}</th>
-            <th class="py-1">{{ t('yueGen.help.advanced.whatHeader') }}</th>
-          </tr>
-        </thead>
-        <tbody class="align-top">
-          <tr v-for="row in (tm('yueGen.help.advanced.rows') as { param: string; what: string }[])" :key="row.param" class="border-b border-border/60">
-            <td class="py-1.5 pr-2 font-medium text-text">{{ row.param }}</td>
-            <td class="py-1.5">{{ row.what }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p class="font-medium text-text">{{ t('yueGen.help.advanced.samplingTitle') }}</p>
-      <table class="w-full border-collapse text-xs">
-        <tbody class="align-top">
-          <tr v-for="row in (tm('yueGen.help.advanced.samplingRows') as { tag: string; purpose: string }[])" :key="row.tag" class="border-b border-border/60">
-            <td class="py-1.5 pr-2 font-mono text-text">{{ row.tag }}</td>
-            <td class="py-1.5">{{ row.purpose }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p class="text-xs text-text-dim">{{ t('yueGen.help.advanced.footer') }}</p>
+    <!-- Same look as the app's main help (AppHelpModal): lead, numbered cards, bordered cards, tinted tips box -->
+    <HelpModal :open="helpOpen === 'advanced'" :title="t('yueGen.help.advanced.title')" wide @close="helpOpen = null">
+      <div class="space-y-7">
+        <p class="text-[15px] leading-relaxed text-text">{{ t('yueGen.help.advanced.lead') }}</p>
+
+        <!-- Symptom → one-click fix. Comes first: this is what people open the help for. -->
+        <section>
+          <h4 class="mb-2.5 text-sm font-semibold text-text">{{ t('yueGen.help.advanced.fixesTitle') }}</h4>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div v-for="x in (tm('yueGen.help.advanced.fixes') as { id: string; problem: string; fix: string }[])" :key="x.id" class="flex gap-3 rounded-lg border border-accent1/25 bg-accent1/[0.06] p-3">
+              <div class="min-w-0 flex-1">
+                <p class="font-medium text-text">{{ x.problem }}</p>
+                <p class="mt-1 text-[13px] leading-relaxed">{{ x.fix }}</p>
+              </div>
+              <button type="button" class="h-fit shrink-0 rounded-lg border border-accent1/40 px-2.5 py-1 text-xs text-accent1 hover:bg-accent1/10" @click="applyHelpFix(x.id)">{{ t('yueGen.help.advanced.apply') }}</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Each field, grouped by what it changes, with the defaults drawn on a scale -->
+        <section>
+          <h4 class="mb-1 text-sm font-semibold text-text">{{ t('yueGen.help.advanced.fieldsTitle') }}</h4>
+          <p class="mb-3 text-xs leading-relaxed">{{ t('yueGen.help.advanced.fieldsIntro') }}</p>
+          <div class="space-y-4">
+            <div v-for="g in (tm('yueGen.help.advanced.groups') as { title: string; fields: { key: string; name: string; text: string; left: string; right: string; when: string }[] }[])" :key="g.title">
+              <p class="mb-1.5 text-xs font-semibold uppercase tracking-wide text-text-dim">{{ g.title }}</p>
+              <div class="grid gap-3 sm:grid-cols-2">
+                <div v-for="f in g.fields" :key="f.key" class="flex flex-col rounded-lg border border-border/60 bg-panel-2/50 p-4">
+                  <p class="text-[15px] font-medium text-text">{{ f.name }}</p>
+                  <!-- default and range as two separate pills, so they never read as one string -->
+                  <div class="mt-2 flex flex-wrap gap-2 text-xs tabular-nums">
+                    <span class="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-panel px-2 py-0.5">
+                      <span class="text-text-dim">{{ t('yueGen.help.advanced.defaultLabel') }}</span>
+                      <span class="text-text">● {{ helpDefaults(f.key).semantic }}</span>
+                      <span v-if="helpDefaults(f.key).abc" class="text-text">○ {{ helpDefaults(f.key).abc }}</span>
+                    </span>
+                    <span class="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-panel px-2 py-0.5">
+                      <span class="text-text-dim">{{ t('yueGen.help.advanced.rangeLabel') }}</span>
+                      <span class="text-text">{{ helpRange(f.key) }}</span>
+                    </span>
+                  </div>
+                  <p class="mt-3 text-[13px] leading-relaxed">{{ f.text }}</p>
+                  <!-- A ruler, not a slider: what "lower" and "higher" mean, the span's ends as numbers, and
+                       the defaults as labelled ticks (audio above the line, score below it) -->
+                  <div class="mt-4 rounded-md border border-border/50 bg-panel/60 px-3 pb-2 pt-2.5">
+                    <div class="flex justify-between text-xs text-text-dim">
+                      <span>← {{ f.left }}</span>
+                      <span>{{ f.right }} →</span>
+                    </div>
+                    <div class="relative mt-7 h-0.5 rounded-full bg-border" :class="helpDefaults(f.key).abc ? 'mb-7' : 'mb-2'">
+                      <!-- audio default: label, then a tick standing on the line -->
+                      <div class="absolute bottom-0 flex flex-col" :class="tickAlign(scalePct(f.key, helpDefaults(f.key).semantic))" :style="tickStyle(scalePct(f.key, helpDefaults(f.key).semantic))">
+                        <span class="mb-0.5 whitespace-nowrap text-[11px] font-semibold leading-none tabular-nums text-accent1">{{ helpDefaults(f.key).semantic }}<span v-if="helpDefaults(f.key).abc" class="ml-1 font-normal text-text-dim">{{ t('yueGen.help.advanced.scaleSemantic') }}</span></span>
+                        <span class="h-2.5 w-0.5 rounded bg-accent1" aria-hidden="true"></span>
+                      </div>
+                      <!-- score default: a tick hanging from the line, then its label -->
+                      <div v-if="helpDefaults(f.key).abc" class="absolute top-0 flex flex-col" :class="tickAlign(scalePct(f.key, helpDefaults(f.key).abc!))" :style="tickStyle(scalePct(f.key, helpDefaults(f.key).abc!))">
+                        <span class="h-2.5 w-0.5 rounded bg-text-dim" aria-hidden="true"></span>
+                        <span class="mt-0.5 whitespace-nowrap text-[11px] font-semibold leading-none tabular-nums text-text">{{ helpDefaults(f.key).abc }}<span class="ml-1 font-normal text-text-dim">{{ t('yueGen.help.advanced.scaleAbc') }}</span></span>
+                      </div>
+                    </div>
+                    <div class="flex justify-between text-[11px] tabular-nums text-text-dim">
+                      <span>{{ HELP_SCALES[f.key].lo }}</span>
+                      <span>{{ HELP_SCALES[f.key].hi }}</span>
+                    </div>
+                  </div>
+                  <p class="mt-4 rounded-md bg-accent1/[0.07] px-3 py-2 text-[13px] leading-relaxed text-text"><span class="mr-1 text-accent1">→</span>{{ f.when }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <CollapsibleDetails :summary="t('yueGen.help.advanced.rareTitle')">
+          <p class="text-xs leading-relaxed">{{ t('yueGen.help.advanced.rareIntro') }}</p>
+          <div class="grid gap-2 sm:grid-cols-3">
+            <div v-for="f in (tm('yueGen.help.advanced.rare') as { key: string; name: string; text: string }[])" :key="f.key" class="rounded-lg border border-border/60 bg-panel-2/50 p-4">
+              <p class="font-medium text-text">{{ f.name }}</p>
+              <div class="mt-2 flex flex-wrap gap-2 text-xs tabular-nums">
+                <span class="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-panel px-2 py-0.5 text-text">● {{ helpDefaults(f.key).semantic }} <span>○ {{ helpDefaults(f.key).abc }}</span></span>
+                <span class="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-panel px-2 py-0.5"><span class="text-text-dim">{{ t('yueGen.help.advanced.rangeLabel') }}</span><span class="text-text">{{ helpRange(f.key) }}</span></span>
+              </div>
+              <p class="mt-3 text-[13px] leading-relaxed">{{ f.text }}</p>
+            </div>
+          </div>
+        </CollapsibleDetails>
+
+        <section class="rounded-lg border border-status-queued/30 bg-status-queued/[0.05] p-3">
+          <h4 class="mb-1.5 text-sm font-semibold text-text">{{ t('yueGen.help.advanced.rulesTitle') }}</h4>
+          <ol class="list-decimal space-y-1.5 pl-4">
+            <li v-for="x in (tm('yueGen.help.advanced.rules') as string[])" :key="x">{{ x }}</li>
+          </ol>
+        </section>
+
+        <p class="text-xs text-text-dim">{{ t('yueGen.help.advanced.note') }}</p>
+      </div>
     </HelpModal>
   </div>
 </template>
