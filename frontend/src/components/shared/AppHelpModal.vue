@@ -10,6 +10,7 @@ import TargetIcon from './icons/TargetIcon.vue'
 import MicIcon from './icons/MicIcon.vue'
 import TimelineIcon from './icons/TimelineIcon.vue'
 import SparklesIcon from './icons/SparklesIcon.vue'
+import PulseIcon from './icons/PulseIcon.vue'
 
 defineProps<{ open: boolean }>()
 /** open-guide: the editor's own guide or the AI arranger's, shown by the header in place of this one. */
@@ -18,16 +19,17 @@ const { t, tm } = useI18n()
 const router = useRouter()
 
 interface Step { title: string; text: string }
-interface Row { label: string; ace: string; yue: string }
+interface Row { label: string; ace: string; yue: string; sa3: string }
 
 const SECTIONS = [
   { key: 'ace', to: '/ace-step', icon: WaveIcon, title: 'ACE-Step 1.5' },
   { key: 'lora', to: '/ace-step/lora', icon: TargetIcon, title: 'LoRA' },
   { key: 'yue', to: '/yue2', icon: MicIcon, title: 'YuE2-3B' },
+  { key: 'sa3', to: '/stable-audio', icon: PulseIcon, title: 'Stable Audio 3' },
   { key: 'editor', to: '/editor', icon: TimelineIcon, title: '' },
 ] as const
 /** The detail sections, in the order a track travels: made, trained for, split, mixed, arranged, kept. */
-const DETAILS = ['ace', 'yue', 'lora', 'stems', 'editor', 'arranger', 'library'] as const
+const DETAILS = ['ace', 'yue', 'sa3', 'lora', 'stems', 'editor', 'arranger', 'library'] as const
 const LIGHTS = [
   { key: 'stopped', cls: 'border border-text-dim/70' },
   { key: 'starting', cls: 'bg-status-queued animate-pulse' },
@@ -97,12 +99,13 @@ function go(to: string) {
       <section>
         <h4 class="mb-2.5 text-sm font-semibold text-text">{{ t('header.guide.compareTitle') }}</h4>
         <div class="overflow-x-auto rounded-lg border border-border/60">
-          <table class="w-full min-w-[32rem] text-left text-xs">
+          <table class="w-full min-w-[40rem] text-left text-xs">
             <thead class="bg-panel-2/60 text-text">
               <tr>
                 <th class="w-[22%] px-3 py-2 font-medium"></th>
                 <th class="px-3 py-2 font-semibold"><span class="inline-flex items-center gap-1.5"><WaveIcon class="h-3.5 w-3.5 text-accent1" />ACE-Step 1.5</span></th>
                 <th class="px-3 py-2 font-semibold"><span class="inline-flex items-center gap-1.5"><MicIcon class="h-3.5 w-3.5 text-accent1" />YuE2-3B</span></th>
+                <th class="px-3 py-2 font-semibold"><span class="inline-flex items-center gap-1.5"><PulseIcon class="h-3.5 w-3.5 text-accent1" />Stable Audio 3</span></th>
               </tr>
             </thead>
             <tbody>
@@ -110,6 +113,7 @@ function go(to: string) {
                 <th scope="row" class="px-3 py-2 font-medium text-text">{{ r.label }}</th>
                 <td class="px-3 py-2 leading-relaxed">{{ r.ace }}</td>
                 <td class="px-3 py-2 leading-relaxed">{{ r.yue }}</td>
+                <td class="px-3 py-2 leading-relaxed">{{ r.sa3 }}</td>
               </tr>
             </tbody>
           </table>

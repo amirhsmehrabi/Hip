@@ -22,3 +22,8 @@ Thumbs.db
 
 # Claude Code local settings (session permissions/config, not project-relevant)
 .claude/
+
+# Stable Audio 3 server (our code; its venv and generated files are not)
+external/sa3-server/.venv/
+external/sa3-server/output/
+external/sa3-server/uv.lock

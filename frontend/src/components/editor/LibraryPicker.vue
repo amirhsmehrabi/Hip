@@ -42,7 +42,7 @@ onMounted(async () => {
 
 // ---- Search and source filter ----
 type Filter = 'all' | SavedTrack['model'] | 'ai'
-const FILTERS = ['all', 'ace_step', 'yue2', 'editor', 'ai', 'upload'] as const
+const FILTERS = ['all', 'ace_step', 'yue2', 'stable_audio', 'editor', 'ai', 'upload'] as const
 /** A variant the AI arranger saved: a working file of a project, so it stays out of "All" and "Editor". */
 function isAiVariant(trk: SavedTrack): boolean {
   return trk.model === 'editor' && !!trk.params?.ai_part

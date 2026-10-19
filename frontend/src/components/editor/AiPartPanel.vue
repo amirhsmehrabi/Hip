@@ -10,12 +10,14 @@ import type { AiPartJob, AiPartRequest } from '../../stores/aiParts'
 import { useEditorStore } from '../../stores/editor'
 import type { HeldClip } from '../../stores/editor'
 import { useOrchestratorStore } from '../../stores/orchestrator'
+import { useStableAudioStore } from '../../stores/stableAudio'
 import { TRACK_COLORS } from '../../utils/trackColors'
 import {
-  AI_MODE_TASK, AI_MODES, AI_TRACK_COLOR, AI_TRACKS, COPY_THRESHOLD, KEY_SCALES, MAX_CONTEXT_SEC, VOCAL_TRACKS,
-  audioBufferToWavFile, correlationWithContext, renderContext,
+  AI_MODE_TASK, AI_MODES, AI_TRACK_COLOR, AI_TRACKS, COPY_THRESHOLD, ENGINE_MAX_CONTEXT_SEC, ENGINE_MODEL_ID, ENGINE_MODES,
+  KEY_SCALES, SA3_ARRANGER_MODELS, VOCAL_TRACKS, audioBufferToWavFile, correlationWithContext, modelKey, parseModelKey, renderContext,
 } from '../../utils/aiParts'
-import type { AiMode, AiTrack } from '../../utils/aiParts'
+import type { AiEngine, AiMode, AiTrack } from '../../utils/aiParts'
+import { MODEL_LABELS } from '../../composables/useModelSwitch'
 import type { DockSide } from '../../utils/dock'
 import { guessVocalLanguage, VOCAL_LANGUAGES, vocalLanguageLabel } from '../../utils/vocalLanguages'
 import ChipGroup from '../shared/ChipGroup.vue'
@@ -39,6 +41,7 @@ const { t, tm } = useI18n()
 const store = useEditorStore()
 const aiStore = useAiPartsStore()
 const aceStore = useAceStepStore()
+const sa3Store = useStableAudioStore()
 const orchestrator = useOrchestratorStore()
 
 // English examples: ACE-Step's text encoder follows English captions best.
@@ -85,6 +88,36 @@ const coverStrength = ref(0.5)
 const keyScale = ref('')
 const count = ref(3)
 const models = reactive<Record<AiMode, string>>({ lego: '', repaint: '', continue: '', cover: '' })
+/**
+ * Which engine each mode runs on, and the Stable Audio 3 checkpoint for it (`models` above keeps the
+ * ACE-Step one). Remembered across sessions: a repaint can stay on Stable Audio while lego stays on ACE.
+ */
+const ENGINE_STORAGE_KEY = 'remiqora_arranger_engines'
+const engines = reactive<Record<AiMode, AiEngine>>({ lego: 'ace', repaint: 'ace', continue: 'ace', cover: 'ace' })
+const sa3Models = reactive<Record<AiMode, string>>({ lego: 'medium', repaint: 'medium', continue: 'medium', cover: 'medium' })
+try {
+  const saved = JSON.parse(localStorage.getItem(ENGINE_STORAGE_KEY) || '{}') as Partial<Record<AiMode, string>>
+  for (const m of AI_MODES) {
+    if (typeof saved[m] !== 'string') continue
+    const { engine, model } = parseModelKey(saved[m] as string)
+    if (!ENGINE_MODES[engine].includes(m)) continue
+    engines[m] = engine
+    if (engine === 'sa3' && (SA3_ARRANGER_MODELS as readonly string[]).includes(model)) sa3Models[m] = model
+  }
+} catch {
+  // no storage, or a stale value: the defaults stand
+}
+watch([engines, sa3Models], () => {
+  try {
+    const out: Partial<Record<AiMode, string>> = {}
+    for (const m of AI_MODES) out[m] = modelKey(engines[m], engines[m] === 'sa3' ? sa3Models[m] : '')
+    localStorage.setItem(ENGINE_STORAGE_KEY, JSON.stringify(out))
+  } catch {
+    // private mode: nothing to remember
+  }
+})
+const engine = computed<AiEngine>(() => engines[mode.value])
+const engineLabel = computed(() => MODEL_LABELS[ENGINE_MODEL_ID[engine.value]])
 const preparing = ref(false)
 const formError = ref<string | null>(null)
 
@@ -108,23 +141,63 @@ function applyExample(ex: { track: AiTrack; text: string }) {
   captions.lego = ex.text
   helpOpen.value = null
 }
-const showLyrics = computed(() => (mode.value === 'lego' ? VOCAL_TRACKS.has(track.value) : true))
+const showLyrics = computed(() => engine.value === 'ace' && (mode.value === 'lego' ? VOCAL_TRACKS.has(track.value) : true))
 /** Outside lego the lyrics are optional, so the field waits behind a button until it is needed. */
 const lyricsOpen = ref(false)
 const lyricsVisible = computed(() => showLyrics.value && (mode.value === 'lego' || lyricsOpen.value || !!lyrics.value.trim()))
 
-// ---- ACE-Step state ----
+// ---- Engine state (ACE-Step or Stable Audio 3; one of them runs on the GPU) ----
 const aceStatus = computed(() => orchestrator.statuses.ace_step?.status ?? 'stopped')
 const aceRunning = computed(() => orchestrator.activeModel === 'ace_step' && aceStatus.value === 'running')
+const sa3Status = computed(() => orchestrator.statuses.stable_audio?.status ?? 'stopped')
+const sa3Running = computed(() => orchestrator.activeModel === 'stable_audio' && sa3Status.value === 'running')
+const engineStatus = computed(() => (engine.value === 'sa3' ? sa3Status.value : aceStatus.value))
+const engineRunning = computed(() => (engine.value === 'sa3' ? sa3Running.value : aceRunning.value))
 const inventoryModels = computed(() => aceStore.inventory?.models ?? [])
 const modeModels = computed(() => inventoryModels.value.filter((m) => m.supported_task_types.includes(AI_MODE_TASK[mode.value])))
-const selectedModelLoaded = computed(() => modeModels.value.find((m) => m.name === models[mode.value])?.is_loaded ?? false)
-const missingLegoModel = computed(() => mode.value === 'lego' && !!aceStore.inventory && modeModels.value.length === 0)
 /** The base model left out at install: known from the disk, before ACE-Step is even running. */
 const features = useFeaturesStore()
-const baseNotInstalled = computed(() => mode.value === 'lego' && !features.has('aceBase'))
+/** Stable Audio checkpoints the arranger can offer: the downloaded ones (known from the disk), or what its server reports. */
+const sa3Choices = computed(() => {
+  const reported = sa3Store.models.filter((m) => m.available).map((m) => m.id)
+  const known = reported.length ? reported : features.features.stable_audio_models
+  return SA3_ARRANGER_MODELS.filter((id) => (known as string[]).includes(id))
+})
+const sa3Installed = computed(() => features.has('stableAudio') && sa3Choices.value.length > 0)
+/** The "engine · model" select: ACE-Step's checkpoints for the mode, then Stable Audio's (not for lego). */
+const modelChoices = computed(() => {
+  const groups: { engine: AiEngine; label: string; options: { key: string; label: string }[] }[] = [
+    { engine: 'ace', label: MODEL_LABELS.ace_step, options: modeModels.value.map((m) => ({ key: modelKey('ace', m.name), label: m.name.replace('acestep-v15-', '') })) },
+  ]
+  if (ENGINE_MODES.sa3.includes(mode.value) && sa3Installed.value) {
+    groups.push({ engine: 'sa3', label: MODEL_LABELS.stable_audio, options: sa3Choices.value.map((id) => ({ key: modelKey('sa3', id), label: id })) })
+  }
+  // An engine with nothing to offer yet (ACE-Step's inventory arrives once it runs) keeps its group only while chosen.
+  return groups.filter((g) => g.options.length > 0 || g.engine === engine.value)
+})
+const modelChoice = computed({
+  get: () => (engine.value === 'sa3' ? modelKey('sa3', sa3Models[mode.value]) : modelKey('ace', models[mode.value])),
+  set: (key: string) => {
+    const { engine: e, model } = parseModelKey(key)
+    const m = mode.value
+    if (!ENGINE_MODES[e].includes(m)) return
+    engines[m] = e
+    if (e === 'sa3') sa3Models[m] = model
+    else models[m] = model
+  },
+})
+const selectedModelLoaded = computed(() => (engine.value === 'sa3'
+  ? (sa3Store.models.find((m) => m.id === sa3Models[mode.value])?.loaded ?? true)
+  : (modeModels.value.find((m) => m.name === models[mode.value])?.is_loaded ?? false)))
+const missingLegoModel = computed(() => mode.value === 'lego' && !!aceStore.inventory && modeModels.value.length === 0)
+const baseNotInstalled = computed(() => mode.value === 'lego' && engine.value === 'ace' && !features.has('aceBase'))
 
 watch(aceRunning, (running) => { if (running) void aceStore.loadInventory() }, { immediate: true })
+watch(sa3Running, (running) => { if (running) void sa3Store.refreshModels() }, { immediate: true })
+// Lego has no Stable Audio equivalent, and an engine whose weights went away falls back to ACE-Step.
+watch([mode, sa3Installed], () => {
+  for (const m of AI_MODES) if (engines[m] === 'sa3' && (!ENGINE_MODES.sa3.includes(m) || !sa3Installed.value)) engines[m] = 'ace'
+}, { immediate: true })
 // Default model per mode: base for lego (turbo cannot), turbo for the rest. Not the inventory's
 // default_model: that follows whichever DiT is loaded, so after a lego job it says "base".
 watch(inventoryModels, (list) => {
@@ -138,9 +211,9 @@ watch(inventoryModels, (list) => {
   }
 }, { immediate: true })
 
-async function startAce() {
+async function startEngine() {
   try {
-    await orchestrator.switchModel('ace_step')
+    await orchestrator.switchModel(ENGINE_MODEL_ID[engine.value])
   } catch {
     // orchestrator.switchError is shown in the header
   }
@@ -210,7 +283,7 @@ const spans = computed<Spans | { error: string }>(() => {
       const from = continueFrom.value === 'loop' && l ? Math.min(l.end, total) : total
       if (from < 2) return { error: t('aiPart.nothingToContinue') }
       const len = continueBars.value * barSec.value
-      const ctxLen = Math.max(0, Math.min(CONTINUE_CTX, MAX_CONTEXT_SEC - len, from))
+      const ctxLen = Math.max(0, Math.min(CONTINUE_CTX, ENGINE_MAX_CONTEXT_SEC[engine.value] - len, from))
       return { ctxStart: from - ctxLen, ctxEnd: from, regionStart: from, regionEnd: from + len }
     }
   }
@@ -227,7 +300,8 @@ function fmt(sec: number): string {
 // ---- Generate ----
 /** Context audio per lego job, kept for the copy check when the variants arrive. */
 const contexts = new Map<string, AudioBuffer>()
-const canGenerate = computed(() => aceRunning.value && !baseNotInstalled.value && !!models[mode.value] && !preparing.value && !spanError.value
+const canGenerate = computed(() => engineRunning.value && !preparing.value && !spanError.value
+  && (engine.value === 'sa3' ? !!sa3Models[mode.value] : !baseNotInstalled.value && !!models[mode.value])
   && (mode.value === 'lego' || listenIds.value.length > 0))
 
 async function generate() {
@@ -246,8 +320,8 @@ async function generate() {
     formError.value = t('aiPart.tooShort')
     return
   }
-  if (total > MAX_CONTEXT_SEC) {
-    formError.value = t('aiPart.tooLong', { max: MAX_CONTEXT_SEC })
+  if (total > ENGINE_MAX_CONTEXT_SEC[engine.value]) {
+    formError.value = t('aiPart.tooLong', { max: ENGINE_MAX_CONTEXT_SEC[engine.value] })
     return
   }
   preparing.value = true
@@ -257,13 +331,14 @@ async function generate() {
     const job = await aiStore.submit(
       {
         mode: m,
+        engine: engine.value,
         track: track.value,
         caption: captions[m].trim() || placeholder.value,
         lyrics: showLyrics.value ? lyrics.value.trim() : '',
         vocalLanguage: showLyrics.value && lyrics.value.trim() ? vocalLanguage.value || autoLanguage.value : '',
         laneIds: [...listenIds.value],
         ...sp,
-        model: models[m],
+        model: engine.value === 'sa3' ? sa3Models[m] : models[m],
         keyScale: keyScale.value,
         bpm: store.project.bpm || 120,
         count: count.value,
@@ -434,7 +509,7 @@ function statusText(job: AiPartJob): string {
           {{ o.label }}
         </button>
       </div>
-      <p class="min-w-[12rem] flex-1 text-xs text-text-dim" :class="narrow && 'order-3 basis-full'">{{ t(`aiPart.modeHints.${mode}`) }}</p>
+      <p class="min-w-[12rem] flex-1 text-xs text-text-dim" :class="narrow && 'order-3 basis-full'">{{ engine === 'sa3' ? t(`aiPart.modeHintsSa3.${mode}`) : t(`aiPart.modeHints.${mode}`) }}</p>
       <!-- the action stays in view however small the panel gets -->
       <div class="flex items-center gap-2" :class="narrow && 'order-4'">
         <span class="text-[13px] font-medium text-text">{{ t('aiPart.variants') }}</span>
@@ -458,22 +533,23 @@ function statusText(job: AiPartJob): string {
         @click="emit('close')"
       >✕</button>
     </div>
-    <p v-if="aceRunning && models[mode] && !selectedModelLoaded" class="-mt-1 text-right text-[11px] text-text-dim">{{ t('aiPart.firstLoadNote') }}</p>
+    <p v-if="engineRunning && !selectedModelLoaded" class="-mt-1 text-right text-[11px] text-text-dim">{{ t('aiPart.firstLoadNote') }}</p>
     <p v-if="formError" class="rounded-lg bg-status-failed/10 p-2 text-xs text-status-failed">{{ formError }}</p>
 
-    <!-- ACE-Step must be running -->
-    <div v-if="!aceRunning" class="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-panel-2 p-3 text-sm">
-      <p v-if="aceStatus === 'starting'" class="flex items-center gap-2 text-text-dim">
+    <!-- The chosen engine must be running (starting it stops the other one) -->
+    <div v-if="!engineRunning" class="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-panel-2 p-3 text-sm">
+      <p v-if="engineStatus === 'starting'" class="flex items-center gap-2 text-text-dim">
         <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-accent1 border-t-transparent"></span>
-        {{ t('aiPart.aceStarting') }}
+        {{ t('aiPart.engineStarting', { engine: engineLabel }) }}
       </p>
       <template v-else>
-        <p class="text-text-dim">{{ t('aiPart.aceOffline') }}</p>
-        <button type="button" class="accent-gradient rounded-lg px-3 py-1.5 text-xs font-medium text-white" :disabled="orchestrator.switching" @click="startAce">{{ t('aiPart.startAce') }}</button>
+        <p class="text-text-dim">{{ t('aiPart.engineOffline', { engine: engineLabel }) }}</p>
+        <button type="button" class="accent-gradient rounded-lg px-3 py-1.5 text-xs font-medium text-white" :disabled="orchestrator.switching" @click="startEngine">{{ t('aiPart.startEngine', { engine: engineLabel }) }}</button>
+        <span v-if="orchestrator.activeModel && orchestrator.activeModel !== ENGINE_MODEL_ID[engine]" class="text-[11px] text-text-dim">{{ t('aiPart.engineSwitchNote', { running: MODEL_LABELS[orchestrator.activeModel] }) }}</span>
       </template>
     </div>
     <NotInstalled v-if="baseNotInstalled" feature="aceBase" compact />
-    <p v-else-if="aceRunning && missingLegoModel" class="rounded-lg bg-status-failed/10 p-3 text-xs text-status-failed">
+    <p v-else-if="aceRunning && engine === 'ace' && missingLegoModel" class="rounded-lg bg-status-failed/10 p-3 text-xs text-status-failed">
       {{ t('aiPart.noModel', { cmd: DOWNLOAD_CMD }) }}
     </p>
 
@@ -569,7 +645,7 @@ function statusText(job: AiPartJob): string {
             <p v-if="!loop" class="text-[11px] text-text-dim">{{ t('aiPart.selectionOff') }}</p>
             <label v-if="mode === 'lego' && projectEmpty && scope === 'whole'" class="flex items-center gap-2 text-xs text-text-dim">
               {{ t('aiPart.length') }}
-              <input v-model.number="lengthSec" type="number" min="5" :max="MAX_CONTEXT_SEC" class="w-20 rounded border border-border bg-panel-2 px-1.5 py-0.5 text-text" />
+              <input v-model.number="lengthSec" type="number" min="5" :max="ENGINE_MAX_CONTEXT_SEC[engine]" class="w-20 rounded border border-border bg-panel-2 px-1.5 py-0.5 text-text" />
             </label>
           </template>
           <p v-else-if="mode === 'repaint'" class="text-sm" :class="loop ? 'text-text' : 'text-text-dim'">
@@ -610,9 +686,15 @@ function statusText(job: AiPartJob): string {
             </select>
           </label>
           <label class="flex flex-col gap-1">
-            <span class="text-[13px] font-medium text-text">{{ t('aiPart.model') }}</span>
-            <select v-model="models[mode]" class="rounded-lg border border-border bg-panel-2 px-2 py-1.5 text-sm text-text" :disabled="modeModels.length === 0">
-              <option v-for="m in modeModels" :key="m.name" :value="m.name">{{ m.name.replace('acestep-v15-', '') }}</option>
+            <span class="text-[13px] font-medium text-text">{{ modelChoices.length > 1 ? t('aiPart.engineModel') : t('aiPart.model') }}</span>
+            <!-- one decision, "who renders it": the engine's checkpoints grouped under the engine's name -->
+            <select v-model="modelChoice" class="rounded-lg border border-border bg-panel-2 px-2 py-1.5 text-sm text-text" :disabled="modelChoices.every((g) => g.options.length === 0)">
+              <template v-for="g in modelChoices" :key="g.engine">
+                <optgroup v-if="modelChoices.length > 1" :label="g.label">
+                  <option v-for="o in g.options" :key="o.key" :value="o.key">{{ o.label }}</option>
+                </optgroup>
+                <option v-for="o in g.options" v-else :key="o.key" :value="o.key">{{ o.label }}</option>
+              </template>
             </select>
           </label>
           <span class="pb-2 text-xs text-text-dim">{{ t('aiPart.tempo', { bpm: store.project.bpm || 120 }) }}</span>

@@ -5,13 +5,17 @@ Checked on disk on every call - cheap, and right after an install from the app o
 - yue2: the audio.cpp server and at least one YuE2 weight file, plus which precisions are there;
 - demucs: the stem separation environment;
 - ace_base: ACE-Step's base model, which the editor's AI arranger needs to add parts (turbo cannot);
-- ace_xl: its XL base model (about 20 GB), an optional bigger alternative for those parts.
+- ace_xl: its XL base model (about 20 GB), an optional bigger alternative for those parts;
+- stable_audio: the sa3-server environment plus at least one Stable Audio 3 checkpoint in the Hugging Face cache
+  (the weights are gated, so they are fetched by the user, not by the installer).
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-from .config import ACE_STEP_DIR, DEMUCS_DIR, MODELS, YUE2_MODEL_PATH
+import os
+
+from .config import ACE_STEP_DIR, DEMUCS_DIR, MODELS, STABLE_AUDIO_DIR, YUE2_MODEL_PATH
 
 ACE_BASE_MODEL = "acestep-v15-base"
 ACE_XL_MODEL = "acestep-v15-xl-base"
@@ -49,6 +53,37 @@ def has_ace_step() -> bool:
     return (ACE_STEP_DIR / ".venv").is_dir()
 
 
+STABLE_AUDIO_MODELS = ("medium", "small-music", "small-sfx")
+
+
+def _hf_hub_dir() -> Path:
+    # Same resolution order as huggingface_hub: HF_HUB_CACHE > HF_HOME/hub > ~/.cache/huggingface/hub.
+    if os.getenv("HF_HUB_CACHE"):
+        return Path(os.environ["HF_HUB_CACHE"])
+    if os.getenv("HF_HOME"):
+        return Path(os.environ["HF_HOME"]) / "hub"
+    return Path.home() / ".cache" / "huggingface" / "hub"
+
+
+def stable_audio_models() -> list[str]:
+    """Checkpoints whose download finished: a snapshot folder holding model.safetensors."""
+    hub = _hf_hub_dir()
+    found = []
+    for name in STABLE_AUDIO_MODELS:
+        snaps = hub / f"models--stabilityai--stable-audio-3-{name}" / "snapshots"
+        if snaps.is_dir() and any((d / "model.safetensors").is_file() for d in snaps.iterdir()):
+            found.append(name)
+    return found
+
+
+def has_stable_audio_env() -> bool:
+    return (STABLE_AUDIO_DIR / ".venv").is_dir()
+
+
+def has_stable_audio() -> bool:
+    return has_stable_audio_env() and bool(stable_audio_models())
+
+
 def snapshot() -> dict:
     return {
         "ace_step": has_ace_step(),
@@ -57,4 +92,7 @@ def snapshot() -> dict:
         "demucs": has_demucs(),
         "ace_base": has_ace_base(),
         "ace_xl": has_ace_xl(),
+        "stable_audio": has_stable_audio(),
+        "stable_audio_env": has_stable_audio_env(),
+        "stable_audio_models": stable_audio_models(),
     }

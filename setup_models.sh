@@ -294,6 +294,26 @@ else
     echo "Skipped Demucs 'uv sync' - install uv and re-run this script."
 fi
 
+step "Stable Audio 3 (sa3-server)"
+# Our own small HTTP server around Stability's stable-audio-3 package; the uv project is
+# tracked in the repository (external/sa3-server), so only "uv sync" runs here. On a Mac
+# only the small checkpoints run (medium needs CUDA + Flash Attention). The weights are gated
+# on Hugging Face and are NOT fetched here: accept the licence on the stabilityai/stable-audio-3-*
+# pages, then "uvx --from huggingface_hub hf auth login" and
+# "uvx --from huggingface_hub hf download stabilityai/stable-audio-3-small-music".
+STABLE_AUDIO_DIR="$EXTERNAL_DIR/sa3-server"
+if [[ ! -f "$STABLE_AUDIO_DIR/pyproject.toml" ]]; then
+    echo "external/sa3-server is missing from this checkout - skipping Stable Audio 3."
+elif assert_command uv "Install it from https://docs.astral.sh/uv/getting-started/installation/"; then
+    (
+        cd "$STABLE_AUDIO_DIR"
+        echo "Running 'uv sync' for sa3-server (can take a while) ..."
+        uv sync
+    )
+else
+    echo "Skipped sa3-server 'uv sync' - install uv and re-run this script."
+fi
+
 step "backend/.env"
 ENV_FILE="$ROOT/backend/.env"
 FFMPEG_BIN_DIR=$(find_ffmpeg_bin_dir || true)
@@ -312,6 +332,11 @@ YUE2_DIR=$AUDIOCPP_DIR
 # Separate uv-managed venv/project for Demucs (stem separation).
 DEMUCS_DIR=$DEMUCS_DIR
 
+# Stable Audio 3: our HTTP server (external/sa3-server). Weights come from the Hugging Face
+# cache (gated: accept the licence, "hf auth login", "hf download stabilityai/stable-audio-3-small-music").
+STABLE_AUDIO_DIR=$STABLE_AUDIO_DIR
+STABLE_AUDIO_PRELOAD=small-music
+
 # ffmpeg bin dir (used by ACE-Step's process launch and by our own
 # non-WAV-upload transcoding for YuE2).
 FFMPEG_BIN_DIR=${FFMPEG_BIN_DIR:-}
@@ -329,6 +354,7 @@ else
     echo "  ACE_STEP_DIR=$ACE_DIR"
     echo "  YUE2_DIR=$AUDIOCPP_DIR"
     echo "  DEMUCS_DIR=$DEMUCS_DIR"
+    echo "  STABLE_AUDIO_DIR=$STABLE_AUDIO_DIR"
     if [[ -n "${FFMPEG_BIN_DIR:-}" ]]; then
         echo "  FFMPEG_BIN_DIR=$FFMPEG_BIN_DIR (detected - edit backend/.env if it doesn't already match)"
     fi

@@ -1,16 +1,25 @@
 import { useRouter } from 'vue-router'
 import { useOrchestratorStore } from '../stores/orchestrator'
-import { useFeaturesStore } from '../stores/features'
+import { useFeaturesStore, type FeatureId } from '../stores/features'
 import type { ModelId } from '../types'
 
 export const MODEL_ROUTES: Record<ModelId, string> = {
   ace_step: 'ace-step',
   yue2: 'yue2',
+  stable_audio: 'stable-audio',
 }
 
 export const MODEL_LABELS: Record<ModelId, string> = {
   ace_step: 'ACE-Step 1.5',
   yue2: 'YuE2-3B',
+  stable_audio: 'Stable Audio 3',
+}
+
+/** The installer part an engine needs; null when it is always there. */
+export const MODEL_FEATURE: Record<ModelId, FeatureId | null> = {
+  ace_step: null,
+  yue2: 'yue2',
+  stable_audio: 'stableAudio',
 }
 
 /**
@@ -26,7 +35,8 @@ export function useModelSwitch() {
     const routeName = MODEL_ROUTES[id]
     if (!stay && router.currentRoute.value.name !== routeName) await router.push({ name: routeName })
     // Left out at install: its page says so and offers to install it; there is nothing to start.
-    if (id === 'yue2' && !features.has('yue2')) return
+    const feature = MODEL_FEATURE[id]
+    if (feature && !features.has(feature)) return
     const status = orchestrator.statuses[id]?.status ?? 'stopped'
     if (orchestrator.activeModel === id && status === 'running') return
     await orchestrator.switchModel(id)

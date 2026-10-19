@@ -3,7 +3,7 @@ import { getFeatures } from '../api/system'
 import type { Features } from '../api/system'
 
 /** A part the desktop installer lets a user leave out; the app asks for one by these ids. */
-export type FeatureId = 'yue2' | 'demucs' | 'aceBase'
+export type FeatureId = 'yue2' | 'demucs' | 'aceBase' | 'stableAudio'
 
 /** The desktop app's bridge (desktop/src/preload.js); absent in a browser on a source install. */
 interface DesktopBridge {
@@ -16,11 +16,21 @@ interface DesktopBridge {
  */
 export const useFeaturesStore = defineStore('features', {
   state: () => ({
-    features: { ace_step: true, yue2: true, yue2_precisions: ['q8_0', 'q4_0'], demucs: true, ace_base: true, ace_xl: true } as Features,
+    features: {
+      ace_step: true, yue2: true, yue2_precisions: ['q8_0', 'q4_0'], demucs: true, ace_base: true, ace_xl: true,
+      stable_audio: true, stable_audio_env: true, stable_audio_models: ['medium', 'small-music', 'small-sfx'],
+    } as Features,
     loaded: false,
   }),
   getters: {
-    has: (s) => (id: FeatureId): boolean => (id === 'yue2' ? s.features.yue2 : id === 'demucs' ? s.features.demucs : s.features.ace_base),
+    has: (s) => (id: FeatureId): boolean => {
+      switch (id) {
+        case 'yue2': return s.features.yue2
+        case 'demucs': return s.features.demucs
+        case 'aceBase': return s.features.ace_base
+        case 'stableAudio': return s.features.stable_audio
+      }
+    },
     /** The desktop app can download a missing part itself; a source install runs the setup script. */
     canInstall: (): boolean => typeof (window as unknown as { remiqora?: DesktopBridge }).remiqora?.addFeatures === 'function',
   },
