@@ -2,11 +2,11 @@
 export type DockSide = 'top' | 'right' | 'bottom'
 export const DOCK_SIDES: DockSide[] = ['top', 'right', 'bottom']
 
-/** The editor's movable panels: the AI arranger and the mixer with its effects. */
-export type DockPanel = 'ai' | 'mixer'
+/** The editor's movable panels: the AI arranger, the samples panel and the mixer with its effects. */
+export type DockPanel = 'ai' | 'sfx' | 'mixer'
 
 const STORAGE_KEY = 'remiqora_editor_docks'
-const DEFAULTS: Record<DockPanel, DockSide> = { ai: 'right', mixer: 'bottom' }
+const DEFAULTS: Record<DockPanel, DockSide> = { ai: 'right', sfx: 'bottom', mixer: 'bottom' }
 
 /** Share of the work area's width left of the "right" drop zone (dockAt and the zones drawn while dragging). */
 export const RIGHT_ZONE_START = 0.72
@@ -19,7 +19,11 @@ function isSide(v: unknown): v is DockSide {
 export function loadDocks(): Record<DockPanel, DockSide> {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') as Record<string, unknown>
-    return { ai: isSide(saved.ai) ? saved.ai : DEFAULTS.ai, mixer: isSide(saved.mixer) ? saved.mixer : DEFAULTS.mixer }
+    return {
+      ai: isSide(saved.ai) ? saved.ai : DEFAULTS.ai,
+      sfx: isSide(saved.sfx) ? saved.sfx : DEFAULTS.sfx,
+      mixer: isSide(saved.mixer) ? saved.mixer : DEFAULTS.mixer,
+    }
   } catch {
     return { ...DEFAULTS }
   }

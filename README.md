@@ -71,6 +71,7 @@ ACE-Step and YuE2 are two independent music generation engines, each with its ow
 | **MuScriptor** | Transcribes audio (the full mix or a single stem) into MIDI notes. |
 | **Built-in DAW** | A multitrack timeline editor for assembling tracks/stems into a final mix: an effects rack on every channel, auto-BPM and time-stretch, WAV/MP3 export, or stems with a Reaper project / DAWproject to finish in your own DAW. |
 | **AI arranger** | Adds a part (drums, bass, strings, keys, vocals and more) on top of the lanes you choose, repaints a section, continues the track or covers it in another style — each variant lands on its own lane. |
+| **Samples** | One-shots, loops at the project tempo and textures from a description (Stable Audio 3), auditioned in the editor and dropped onto a track. |
 
 The interface is fully bilingual (Russian/English). It starts in your system language, and the switcher in the header overrides it.
 
@@ -173,6 +174,10 @@ The arranger builds a track up step by step instead of generating it in one go. 
 - **Cover** — a new version of the chosen lanes in another style, with a strength slider.
 
 Every run gives 2–4 variants, each on its own lane next to the source, so you can listen, keep the best one and go on to the next part; when a repaint is discarded, the original clip comes back. Adding parts needs ACE-Step's **base** model (about 4.8 GB, turbo cannot do it); the **XL base** model (about 20 GB, needs a 16 GB card or more) is an optional, more detailed alternative. The other modes run on turbo, or on **Stable Audio 3** when you pick it under *Engine · model*: it fills in and continues by listening to the audio on both sides of the range (inpainting) and covers by audio-to-audio, in seconds, instrumental only. In the desktop app the ACE-Step base models are optional at install and can be added later from the arranger itself.
+
+### Samples
+
+The **Samples** button next to the arranger makes sounds rather than parts: a **one-shot** (a kick, a hit, a whoosh), a **loop** of 1–8 bars at the project tempo, or a **texture** (rain, a crowd, a drone), from a short description in the style of a sample library. Results line up in a strip: listen first, then add the one you like to a new track or to the selected track at the playhead (or at the loop start). Loops are cut to whole bars, but the model does not guarantee a seamless join, so check them on repeat. Sounds you never placed leave the library when the job is dismissed; the ones you did are kept under the library's *Samples* filter. Needs Stable Audio 3 (the `small-sfx` checkpoint is the sound model; `medium` does sounds too).
 
 ---
 
