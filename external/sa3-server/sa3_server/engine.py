@@ -181,8 +181,8 @@ class Engine:
         if job.cancel_event.is_set():
             raise JobCancelled()
 
-        if task == "a2a" and job.audio is not None:
-            audio = trim_to_seconds(audio, job.audio[1].shape[-1] / job.audio[0], sr)
+        if task == "a2a":
+            audio = trim_to_seconds(audio, float(req["duration"]), sr)
 
         files: list[str] = []
         durations: list[float] = []

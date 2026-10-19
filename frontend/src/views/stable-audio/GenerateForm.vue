@@ -36,6 +36,9 @@ const refTrackId = ref<number | null>(null)
 const refLoading = ref(false)
 const refMode = ref<Sa3RefMode>('cover')
 const closeness = ref(0.5)
+/** A cover is as long as the source unless the user wants a length of their own. */
+const lengthMode = ref<'source' | 'custom'>('source')
+const customSec = ref(30)
 const maskStart = ref(0)
 const maskEnd = ref(10)
 const extendSec = ref(15)
@@ -95,9 +98,14 @@ async function onPickFromLibrary(payload: { sourceUrl: string; sourceLabel: stri
   }
 }
 /** Seconds the result will have with a reference: the source's, or the source plus the extension. */
-const resultSeconds = computed(() => (refMode.value === 'continue' ? refDurationSec.value + extendSec.value : refDurationSec.value))
+const coverSec = computed(() => (lengthMode.value === 'custom' ? customSec.value : refDurationSec.value))
+const resultSeconds = computed(() => (refMode.value === 'continue' ? refDurationSec.value + extendSec.value : refMode.value === 'cover' ? coverSec.value : refDurationSec.value))
 const reference = computed<Sa3Reference | null>(() => (useRef.value && refFile.value
-  ? { file: refFile.value, name: refName.value, durationSec: refDurationSec.value, trackId: refTrackId.value, mode: refMode.value, closeness: closeness.value, maskStart: maskStart.value, maskEnd: maskEnd.value, extendSec: extendSec.value }
+  ? {
+      file: refFile.value, name: refName.value, durationSec: refDurationSec.value, trackId: refTrackId.value, mode: refMode.value,
+      closeness: closeness.value, customSec: refMode.value === 'cover' && lengthMode.value === 'custom' ? customSec.value : null,
+      maskStart: maskStart.value, maskEnd: maskEnd.value, extendSec: extendSec.value,
+    }
   : null))
 
 const kindOptions = computed(() => [
@@ -240,10 +248,25 @@ function applyExample(text: string) {
           </div>
           <ChipGroup v-model="refMode" :options="refModeOptions" />
           <p class="text-xs text-text-dim">{{ t(`sa3Gen.ref.modeHints.${refMode}`) }}</p>
-          <label v-if="refMode === 'cover'" class="block space-y-1">
-            <span class="text-xs text-text">{{ t('sa3Gen.ref.closeness', { v: closeness.toFixed(2) }) }}</span>
-            <input v-model.number="closeness" type="range" min="0" max="1" step="0.05" class="w-full accent-accent1" />
-          </label>
+          <template v-if="refMode === 'cover'">
+            <label class="block space-y-1">
+              <span class="text-xs text-text">{{ t('sa3Gen.ref.closeness', { v: closeness.toFixed(2) }) }}</span>
+              <input v-model.number="closeness" type="range" min="0" max="1" step="0.05" class="w-full accent-accent1" />
+            </label>
+            <!-- the result's length: the source's, or one of your own (shorter covers the start, longer carries on) -->
+            <div class="space-y-1">
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-text">{{ t('sa3Gen.ref.lengthMode') }}</span>
+                <div class="inline-flex rounded-lg border border-border bg-panel-2 p-0.5" role="group" :aria-label="t('sa3Gen.ref.lengthMode')">
+                  <button type="button" class="rounded-md px-2.5 py-1 text-xs transition-colors" :class="lengthMode === 'source' ? 'bg-panel text-text shadow-sm ring-1 ring-border' : 'text-text-dim hover:text-text'" :aria-pressed="lengthMode === 'source'" @click="lengthMode = 'source'">{{ t('sa3Gen.ref.lengthSource') }}</button>
+                  <button type="button" class="rounded-md px-2.5 py-1 text-xs transition-colors" :class="lengthMode === 'custom' ? 'bg-panel text-text shadow-sm ring-1 ring-border' : 'text-text-dim hover:text-text'" :aria-pressed="lengthMode === 'custom'" @click="lengthMode = 'custom'">{{ t('sa3Gen.ref.lengthCustom') }}</button>
+                </div>
+                <span v-if="lengthMode === 'custom'" class="text-xs tabular-nums text-text-dim">{{ formatClockShort(customSec) }}</span>
+              </div>
+              <input v-if="lengthMode === 'custom'" v-model.number="customSec" type="range" :min="minSeconds" :max="maxSeconds" :step="stepSeconds" class="w-full accent-accent1" />
+              <p v-if="lengthMode === 'custom'" class="text-xs text-text-dim">{{ t('sa3Gen.ref.lengthCustomHint') }}</p>
+            </div>
+          </template>
           <div v-else-if="refMode === 'repaint'" class="grid grid-cols-2 gap-2">
             <label class="space-y-1">
               <span class="block text-xs text-text-dim">{{ t('sa3Gen.ref.rangeFrom') }}</span>
