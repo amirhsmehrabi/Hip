@@ -8,6 +8,7 @@ import { decodeStem } from '../../audio/mixerEngine'
 import type { Clip } from '../../audio/timelineTypes'
 import * as tracksApi from '../../api/tracks'
 import { audioBufferToWavFile, renderContext } from '../../utils/aiParts'
+import { shortLaneNames } from '../../utils/laneNames'
 import { TRACK_COLORS } from '../../utils/trackColors'
 import { claimPlayback, fetchAndComputePeaks, releasePlaybackIfCurrent } from '../../composables/audioPlayback'
 import { useEditorStore } from '../../stores/editor'
@@ -104,6 +105,11 @@ const listen = ref(false)
 // At 0.5 the result is still the source (its timbre survives); from about 0.3 down the words win.
 const closeness = ref(0.3)
 const candidateLanes = computed(() => store.project.lanes.filter((l) => l.clips.some((c) => c.type !== 'midi' && c.sourceUrl)))
+/** Chip labels: stems of one track differ only after the colon, so the shared start is dropped. */
+const laneLabels = computed(() => {
+  const short = shortLaneNames(candidateLanes.value.map((l) => l.name))
+  return Object.fromEntries(candidateLanes.value.map((l, i) => [l.id, short[i]]))
+})
 const listenIds = ref<string[]>([])
 const knownLanes = new Set<string>()
 let knownSession = -1
@@ -422,7 +428,7 @@ function statusKey(job: SfxJob): string {
                 :style="{ borderColor: laneColor(lane.colorId), backgroundColor: listenIds.includes(lane.id) ? laneColor(lane.colorId) : 'transparent' }"
                 aria-hidden="true"
               ></span>
-              <span class="max-w-[10rem] truncate">{{ lane.name }}</span>
+              <span class="max-w-[10rem] truncate" :title="lane.name">{{ laneLabels[lane.id] }}</span>
             </label>
           </div>
           <p class="text-[11px]" :class="'error' in listenSpan ? 'text-status-failed' : 'text-text-dim'">
