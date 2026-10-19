@@ -34,6 +34,9 @@ async def switch(req: SwitchRequest):
         raise HTTPException(status_code=409, detail="YuE2 is not installed")
     if req.model == "ace_step" and not features.has_ace_step():
         raise HTTPException(status_code=409, detail="ACE-Step is not installed")
+    if req.model == "stable_audio" and not features.has_stable_audio():
+        detail = "Stable Audio 3 weights are not downloaded" if features.has_stable_audio_env() else "Stable Audio 3 is not installed"
+        raise HTTPException(status_code=409, detail=detail)
     try:
         await manager.switch_to(req.model)
     except ValueError as exc:

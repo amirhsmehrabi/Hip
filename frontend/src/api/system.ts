@@ -1,6 +1,6 @@
 import { apiFetch } from './http'
 
-export type MemoryHolder = 'ace_step' | 'yue2' | 'demucs' | 'backend' | 'other'
+export type MemoryHolder = 'ace_step' | 'yue2' | 'stable_audio' | 'demucs' | 'backend' | 'other'
 
 export interface Resources {
   ram: { used: number; total: number } | null
@@ -24,6 +24,11 @@ export interface Features {
   demucs: boolean
   ace_base: boolean
   ace_xl: boolean
+  /** The sa3-server environment plus at least one downloaded checkpoint. */
+  stable_audio: boolean
+  /** The environment alone: the weights are gated and fetched by the user. */
+  stable_audio_env: boolean
+  stable_audio_models: ('medium' | 'small-music' | 'small-sfx')[]
 }
 
 export function getFeatures(): Promise<Features> {

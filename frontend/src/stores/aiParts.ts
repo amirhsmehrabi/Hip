@@ -1,9 +1,11 @@
 import { acceptHMRUpdate, defineStore } from 'pinia'
 import * as aceApi from '../api/aceStep'
 import type { GenerateMusicRequest } from '../api/aceStep'
+import * as sa3Api from '../api/stableAudio'
+import type { Sa3JobRequest, Sa3ModelId } from '../api/stableAudio'
 import * as tracksApi from '../api/tracks'
 import { i18n } from '../i18n'
-import type { AiMode, AiTrack } from '../utils/aiParts'
+import type { AiEngine, AiMode, AiTrack } from '../utils/aiParts'
 import type { HeldClip } from './editor'
 
 const t = i18n.global.t
@@ -12,6 +14,8 @@ const POLL_MS = 2000
 
 export interface AiPartRequest {
   mode: AiMode
+  /** Which engine renders it; `model` is a checkpoint name of that engine. */
+  engine: AiEngine
   /** lego only: the part class to generate. */
   track: AiTrack
   caption: string
@@ -106,6 +110,43 @@ function buildRequest(r: AiPartRequest): GenerateMusicRequest {
   }
 }
 
+/**
+ * Stable Audio 3 request for one job. Repaint and continue are inpainting of the context with the
+ * range masked (continue: the mask starts where the context ends and the result is longer than it);
+ * cover is audio-to-audio. The output spans the whole context (cover: the range), as ACE-Step's does.
+ */
+function buildSa3Request(r: AiPartRequest): Sa3JobRequest {
+  const text = r.caption.trim()
+  const prompt = ['TrackType: Music, VocalType: Instrumental.', text, r.keyScale ? `in ${r.keyScale}` : '', r.bpm ? `${Math.round(r.bpm)} BPM` : '']
+    .filter(Boolean)
+    .join(text && !/[.,;!?]$/.test(text) ? ', ' : ' ')
+    .replace('. , ', '. ')
+  const common: Sa3JobRequest = {
+    task: 'text',
+    model: r.model as Sa3ModelId,
+    prompt,
+    steps: 8,
+    cfg_scale: 1,
+    seed: -1,
+    batch_size: r.count,
+  }
+  switch (r.mode) {
+    case 'cover':
+      // ACE-Step's strength is "closeness to the original"; Stable Audio's noise level is the opposite.
+      return { ...common, task: 'a2a', init_noise_level: Math.min(1, Math.max(0, 1 - r.coverStrength)) }
+    case 'continue':
+      return {
+        ...common, task: 'inpaint', duration: r.regionEnd - r.ctxStart,
+        mask_start: [r.ctxEnd - r.ctxStart], mask_end: [r.regionEnd - r.ctxStart],
+      }
+    default:
+      return {
+        ...common, task: 'inpaint', duration: r.ctxEnd - r.ctxStart,
+        mask_start: [r.regionStart - r.ctxStart], mask_end: [r.regionEnd - r.ctxStart],
+      }
+  }
+}
+
 export function jobLabel(r: AiPartRequest): string {
   return r.mode === 'lego' ? t(`aiPart.tracks.${r.track}`) : t(`aiPart.resultNames.${r.mode}`)
 }
@@ -138,8 +179,13 @@ export const useAiPartsStore = defineStore('aiParts', {
       })
       const job = this.jobs[0] // the reactive proxy, so later writes re-render
       try {
-        const res = await aceApi.releaseTask(buildRequest(request), context)
-        job.taskId = res.task_id
+        if (request.engine === 'sa3') {
+          const res = await sa3Api.submitJob(buildSa3Request(request), context)
+          job.taskId = res.job_id
+        } else {
+          const res = await aceApi.releaseTask(buildRequest(request), context)
+          job.taskId = res.task_id
+        }
         this._ensurePolling()
       } catch (e) {
         job.status = 'failed'
@@ -159,6 +205,37 @@ export const useAiPartsStore = defineStore('aiParts', {
     },
     async _poll() {
       const waiting = this.jobs.filter((j) => (j.status === 'queued' || j.status === 'running') && j.taskId)
+      if (waiting.length === 0) return
+      await Promise.all([
+        this._pollAce(waiting.filter((j) => j.request.engine !== 'sa3')),
+        this._pollSa3(waiting.filter((j) => j.request.engine === 'sa3')),
+      ])
+    },
+    async _pollSa3(waiting: AiPartJob[]) {
+      if (waiting.length === 0) return
+      let states: sa3Api.Sa3JobState[]
+      try {
+        states = await sa3Api.queryJobs(waiting.map((j) => j.taskId as string))
+      } catch {
+        return
+      }
+      for (const st of states) {
+        const job = waiting.find((j) => j.taskId === st.job_id)
+        if (!job || job.status === 'cancelled') continue
+        if (st.status === 'done') {
+          job.status = 'saving'
+          job.progress = 100
+          void this._persist(job, st.files.map((f) => sa3Api.audioUrl(f)))
+        } else if (st.status === 'failed' || st.status === 'cancelled') {
+          job.status = st.status
+          job.error = st.error || (st.status === 'failed' ? t('storeErrors.unknownError') : null)
+        } else {
+          job.status = st.status
+          job.progress = st.progress
+        }
+      }
+    },
+    async _pollAce(waiting: AiPartJob[]) {
       if (waiting.length === 0) return
       let results: aceApi.QueryResultEntry[]
       try {
@@ -205,7 +282,7 @@ export const useAiPartsStore = defineStore('aiParts', {
               title: `${jobLabel(r)} · ${t('aiPart.variantShort', { n: i + 1 })}`,
               lyrics: r.lyrics,
               params: {
-                ai_part: true, mode: r.mode, track_name: r.mode === 'lego' ? r.track : undefined, caption: r.caption,
+                ai_part: true, mode: r.mode, engine: r.engine, track_name: r.mode === 'lego' ? r.track : undefined, caption: r.caption,
                 model: r.model, bpm: r.bpm, key_scale: r.keyScale, context: [r.ctxStart, r.ctxEnd],
                 region: [r.regionStart, r.regionEnd],
               },
@@ -227,7 +304,8 @@ export const useAiPartsStore = defineStore('aiParts', {
       if (!job) return
       if (job.taskId) {
         try {
-          await aceApi.cancelTask(job.taskId)
+          if (job.request.engine === 'sa3') await sa3Api.cancelJob(job.taskId)
+          else await aceApi.cancelTask(job.taskId)
         } catch {
           // already finished or the model is gone; the local state below still applies
         }

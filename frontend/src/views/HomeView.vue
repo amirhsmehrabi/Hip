@@ -16,10 +16,11 @@ const orchestrator = useOrchestratorStore()
 const { selectModel } = useModelSwitch()
 const { t } = useI18n()
 
-const MODEL_IDS: ModelId[] = ['ace_step', 'yue2']
+const MODEL_IDS: ModelId[] = ['ace_step', 'yue2', 'stable_audio']
 const DESCRIPTION_KEYS: Record<ModelId, string> = {
   ace_step: 'home.descAceStep',
   yue2: 'home.descYue2',
+  stable_audio: 'home.descStableAudio',
 }
 const LED: Record<ModelRuntimeStatus, string> = {
   stopped: 'bg-gray-500',
@@ -77,7 +78,7 @@ async function onPick(id: ModelId) {
     <h1 class="text-center text-2xl font-semibold text-text">{{ t('home.title') }}</h1>
     <p class="mt-2 text-center text-sm text-text-dim">{{ t('home.subtitle') }}</p>
 
-    <div class="mt-6 grid gap-4 sm:grid-cols-2">
+    <div class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <button
         v-for="id in MODEL_IDS"
         :key="id"

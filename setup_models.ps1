@@ -10,6 +10,7 @@ Re-run any time - every step is idempotent (skips work that is already done).
 #>
 
 param(
+    [switch]$SkipStableAudio,
     [switch]$SkipBuild,
     [switch]$SkipWeights
 )
@@ -248,6 +249,30 @@ if (Assert-Command "uv" "Install it from https://docs.astral.sh/uv/getting-start
     Write-Host "Skipped Demucs 'uv sync' - install uv and re-run this script." -ForegroundColor Yellow
 }
 
+Write-Step "Stable Audio 3 (sa3-server)"
+# Our own small HTTP server around Stability's stable-audio-3 package: the uv project is
+# tracked in the repository (external/sa3-server), so there is nothing to clone - only
+# "uv sync", which also pulls torch (cu128) and a prebuilt Flash Attention wheel. The weights
+# are gated on Hugging Face and are NOT fetched here: accept the licence on the
+# stabilityai/stable-audio-3-* pages, run "uvx --from huggingface_hub hf auth login" and
+# "uvx --from huggingface_hub hf download stabilityai/stable-audio-3-medium" once.
+$stableAudioDir = Join-Path $externalDir "sa3-server"
+if (-not (Test-Path (Join-Path $stableAudioDir "pyproject.toml"))) {
+    Write-Host "external/sa3-server is missing from this checkout - skipping Stable Audio 3." -ForegroundColor Yellow
+} elseif ($SkipStableAudio) {
+    Write-Host "Skipped (-SkipStableAudio)."
+} elseif (Assert-Command "uv" "Install it from https://docs.astral.sh/uv/getting-started/installation/") {
+    Push-Location $stableAudioDir
+    try {
+        Write-Host "Running 'uv sync' for sa3-server (pulls the CUDA build of PyTorch and Flash Attention, can take a while) ..."
+        uv sync
+    } finally {
+        Pop-Location
+    }
+} else {
+    Write-Host "Skipped sa3-server 'uv sync' - install uv and re-run this script." -ForegroundColor Yellow
+}
+
 Write-Step "backend/.env"
 $envExample = Join-Path $root "backend\.env.example"
 $envFile = Join-Path $root "backend\.env"
@@ -261,7 +286,8 @@ if (-not (Test-Path $envFile)) {
     $envLines = (Get-Content $envExample) `
         -replace [regex]::Escape("E:\AI\ACE\ACE-Step-1.5"), $aceDir `
         -replace [regex]::Escape("E:\AI\YuE2-3B"), $audioCppDir `
-        -replace [regex]::Escape("E:\AI\Demucs"), $demucsDir
+        -replace [regex]::Escape("E:\AI\Demucs"), $demucsDir `
+        -replace [regex]::Escape("E:\AI\StableAudio"), $stableAudioDir
     if ($ffmpegBinDir) {
         $envLines = $envLines -replace [regex]::Escape("E:\AI\ACE\tools\ffmpeg-shared\ffmpeg-master-latest-win64-gpl-shared\bin"), $ffmpegBinDir
     }
@@ -277,6 +303,7 @@ if (-not (Test-Path $envFile)) {
     Write-Host "  ACE_STEP_DIR=$aceDir"
     Write-Host "  YUE2_DIR=$audioCppDir"
     Write-Host "  DEMUCS_DIR=$demucsDir"
+    Write-Host "  STABLE_AUDIO_DIR=$stableAudioDir"
     if ($ffmpegBinDir) {
         Write-Host "  FFMPEG_BIN_DIR=$ffmpegBinDir (detected - edit backend/.env if it doesn't already match)"
     }

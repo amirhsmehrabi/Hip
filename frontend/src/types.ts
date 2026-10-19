@@ -1,4 +1,4 @@
-export type ModelId = 'ace_step' | 'yue2'
+export type ModelId = 'ace_step' | 'yue2' | 'stable_audio'
 export type TrackOrigin = ModelId | 'editor' | 'upload'
 
 export type ModelRuntimeStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'error'

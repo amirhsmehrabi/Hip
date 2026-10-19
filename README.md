@@ -65,6 +65,7 @@ ACE-Step and YuE2 are two independent music generation engines, each with its ow
 | **ACE-Step 1.5** | Fast generation from text/style tags, covers, section repainting, extracting/adding parts on top of a reference track. |
 | **YuE2-3B** | Full-length track generation with CoT score planning (a symbolic ABC plan before the audio). |
 | **SheetSage2** | Extracts melody and harmony from a reference track into ABC notation — used as YuE2's input. |
+| **Stable Audio 3** | Instrumentals and sound effects from a description in seconds (no vocals); in the editor's AI arranger it repaints, continues and covers by listening to the audio around the range. |
 | **LoRA training** | Dataset → auto-labeling → preprocessing → training → export — the whole ACE-Step fine-tuning pipeline for your own voice/style, in the browser. |
 | **Demucs** | Splits any track into 4 stems: vocals, drums, bass, other. |
 | **MuScriptor** | Transcribes audio (the full mix or a single stem) into MIDI notes. |
@@ -171,7 +172,7 @@ The arranger builds a track up step by step instead of generating it in one go. 
 - **Continue** — extend the track by a number of bars from its end or from the loop end.
 - **Cover** — a new version of the chosen lanes in another style, with a strength slider.
 
-Every run gives 2–4 variants, each on its own lane next to the source, so you can listen, keep the best one and go on to the next part; when a repaint is discarded, the original clip comes back. Adding parts needs ACE-Step's **base** model (about 4.8 GB, turbo cannot do it); the **XL base** model (about 20 GB, needs a 16 GB card or more) is an optional, more detailed alternative. The other modes run on turbo. In the desktop app both are optional at install and can be added later from the arranger itself.
+Every run gives 2–4 variants, each on its own lane next to the source, so you can listen, keep the best one and go on to the next part; when a repaint is discarded, the original clip comes back. Adding parts needs ACE-Step's **base** model (about 4.8 GB, turbo cannot do it); the **XL base** model (about 20 GB, needs a 16 GB card or more) is an optional, more detailed alternative. The other modes run on turbo, or on **Stable Audio 3** when you pick it under *Engine · model*: it fills in and continues by listening to the audio on both sides of the range (inpainting) and covers by audio-to-audio, in seconds, instrumental only. In the desktop app the ACE-Step base models are optional at install and can be added later from the arranger itself.
 
 ---
 
@@ -193,6 +194,7 @@ Remiqora is a UI and orchestrator on top of third-party inference engines. Their
 | [ACE-Step-1.5](https://github.com/ace-step/ACE-Step-1.5) | Text/style-driven music generation engine, LoRA training | MIT |
 | [audio.cpp](https://github.com/0xShug0/audio.cpp) (`dev` branch) | YuE2 (generation), SheetSage2 (melody extraction), MuScriptor (MIDI transcription) | Apache-2.0 |
 | [Demucs](https://github.com/adefossez/demucs) | Stem separation (`htdemucs`) | MIT |
+| [Stable Audio 3](https://github.com/Stability-AI/stable-audio-3) | Instrumentals and sound effects; inpainting, continuation and audio-to-audio in the arranger. Run through our own small server, `external/sa3-server` | Code MIT; weights under the [Stability AI Community License](https://stability.ai/community-license-agreement) (free below $1M annual revenue) plus the Gemma Terms of Use for the text encoder |
 
 Patch details and exact base commits are in [`external/patches/README.md`](external/patches/README.md).
 
@@ -297,12 +299,14 @@ The script:
    custom web-uis, which aren't needed.
 3. Runs `uv sync` for ACE-Step and builds `audiocpp_server` (CUDA release,
    `yue2,sheetsage2,muscriptor` models) for audio.cpp.
-4. Downloads the YuE2/SheetSage2/MuScriptor GGUF weights (~10 GB) via
+4. Sets up `external/sa3-server`, our HTTP server around Stable Audio 3 (`uv sync`; the
+   weights are *not* downloaded here, see below).
+5. Downloads the YuE2/SheetSage2/MuScriptor GGUF weights (~10 GB) via
    audio.cpp's `tools/model_manager_v2.py`.
-5. Sets up a `demucs` uv project in `external/Demucs` for stem separation,
+6. Sets up a `demucs` uv project in `external/Demucs` for stem separation,
    routed at PyTorch's cu128 wheel index so it gets a CUDA build (a plain
    `uv add demucs` would silently resolve a CPU-only torch wheel instead).
-6. Creates `backend/.env` with paths to the freshly cloned repositories,
+7. Creates `backend/.env` with paths to the freshly cloned repositories,
    including `FFMPEG_BIN_DIR` — auto-detected from `ffmpeg`'s winget install
    (`setup_prereqs.bat`), even right after installing it in the same
    terminal, before a new one would pick it up on PATH.
@@ -399,6 +403,7 @@ Settings live in `backend/.env` (template: `backend/.env.example`;
 ACE_STEP_DIR=E:\AI\ACE\ACE-Step-1.5
 YUE2_DIR=E:\AI\YuE2-3B
 DEMUCS_DIR=E:\AI\Demucs
+STABLE_AUDIO_DIR=E:\AI\StableAudio
 FFMPEG_BIN_DIR=E:\AI\ACE\tools\ffmpeg-shared\ffmpeg-master-latest-win64-gpl-shared\bin
 CUDA_BIN_DIR=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.4\bin
 ```
@@ -406,6 +411,7 @@ CUDA_BIN_DIR=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.4\bin
 - `ACE_STEP_DIR` — root of the cloned and patched ACE-Step-1.5.
 - `YUE2_DIR` — root of the cloned and patched audio.cpp (where `audiocpp_server.exe` is built and the YuE2/SheetSage2/MuScriptor GGUF weights live).
 - `DEMUCS_DIR` — root of the `demucs` uv project used for stem separation.
+- `STABLE_AUDIO_DIR` — root of the `sa3-server` uv project (a copy of `external/sa3-server` with its `.venv`). The Stable Audio 3 weights are gated on Hugging Face and are read from the Hugging Face cache: accept the licence on [`stabilityai/stable-audio-3-medium`](https://huggingface.co/stabilityai/stable-audio-3-medium) (and `-small-music` / `-small-sfx` if you want them), sign in once with `uvx --from huggingface_hub hf auth login`, then `uvx --from huggingface_hub hf download stabilityai/stable-audio-3-medium`. Optional: `STABLE_AUDIO_API_PORT` (8002), `STABLE_AUDIO_PRELOAD` (the checkpoint warmed up at start, `medium` by default), `STABLE_AUDIO_DEVICE`.
 - `FFMPEG_BIN_DIR` — folder containing `ffmpeg.exe`/`ffprobe.exe`.
 - `CUDA_BIN_DIR` — the `bin` folder of the installed CUDA Toolkit (needs to be on PATH for `audiocpp_server.exe`). Windows only — on macOS this is left unset, since YuE2 runs on the Metal backend instead.
 
@@ -413,7 +419,8 @@ CUDA_BIN_DIR=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.4\bin
 
 ## Known limitations
 
-- ACE-Step and YuE2 switch exclusively by default. On multi-GPU Linux hosts, explicitly setting both `ACE_STEP_DEVICE` and `YUE2_DEVICE` to different device values opts into concurrent residency and pins each engine to its own GPU.
+- The engines (ACE-Step, YuE2, Stable Audio 3) switch exclusively by default. On multi-GPU Linux hosts, explicitly setting every `*_DEVICE` (`ACE_STEP_DEVICE`, `YUE2_DEVICE`, `STABLE_AUDIO_DEVICE`) to different device values opts into concurrent residency and pins each engine to its own GPU.
+- Stable Audio 3 is instrumental only (no vocals), up to 380 s per task with the medium model, and its `medium` checkpoint needs a CUDA GPU with Flash Attention (prebuilt wheels are pinned for Windows and Linux; on macOS only the small models run). It cannot add a part over a mix: the arranger's "Add a part" stays with ACE-Step.
 - MIDI transcription requires YuE2 specifically to be active (the MuScriptor model loads into its process).
 - Windows (NVIDIA CUDA), macOS/Apple Silicon (Metal/MPS), and Linux x86_64 (NVIDIA CUDA) have setup/run paths — `.bat`/`.ps1` scripts for the first, `.sh` scripts for the other two. Linux is community-contributed: it builds audio.cpp from source and needs a CUDA development toolkit in addition to the driver, and has been verified end-to-end on Ubuntu 24.04 (via WSL2 with GPU passthrough) rather than on bare metal or other distros.
 - The desktop installers are experimental: unsigned (a SmartScreen or Gatekeeper prompt), and the first launch downloads from about 18 GB (ACE-Step only) to about 60 GB (everything, including the XL model). The installer does not support Linux yet — Linux users run from source via `setup_linux.sh`.

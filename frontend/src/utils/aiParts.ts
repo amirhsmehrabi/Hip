@@ -2,6 +2,7 @@ import { clipBuffer } from '../audio/timelineTypes'
 import type { TimelineProject } from '../audio/timelineTypes'
 import { encodeWav } from '../audio/wavEncoder'
 import { getSharedAudioCtx } from '../composables/audioPlayback'
+import type { ModelId } from '../types'
 
 /**
  * lego = add a part over the chosen lanes; repaint = redo a selected range; continue = extend past a
@@ -34,6 +35,30 @@ export const KEY_SCALES: string[] = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 
 
 /** ACE-Step 1.5 renders at most 600 s per task. */
 export const MAX_CONTEXT_SEC = 600
+
+/**
+ * Which engine renders a job: ACE-Step (every mode) or Stable Audio 3, whose inpainting and
+ * audio-to-audio cover repaint, continue and cover; it cannot write a part over a mix (lego).
+ */
+export const AI_ENGINES = ['ace', 'sa3'] as const
+export type AiEngine = (typeof AI_ENGINES)[number]
+export const ENGINE_MODES: Record<AiEngine, readonly AiMode[]> = { ace: AI_MODES, sa3: ['repaint', 'continue', 'cover'] }
+/** The longest audio each engine takes in one task (Stable Audio 3 medium: 380 s). */
+export const ENGINE_MAX_CONTEXT_SEC: Record<AiEngine, number> = { ace: MAX_CONTEXT_SEC, sa3: 380 }
+/** The orchestrator's model id behind each engine. */
+export const ENGINE_MODEL_ID: Record<AiEngine, ModelId> = { ace: 'ace_step', sa3: 'stable_audio' }
+/** Stable Audio 3 checkpoints the arranger may pick, with the ones it prefers first. */
+export const SA3_ARRANGER_MODELS = ['medium', 'small-music', 'small-sfx'] as const
+
+/** One value of the "engine · model" select: `ace:acestep-v15-turbo`, `sa3:medium`. */
+export function modelKey(engine: AiEngine, model: string): string {
+  return `${engine}:${model}`
+}
+export function parseModelKey(key: string): { engine: AiEngine; model: string } {
+  const i = key.indexOf(':')
+  const engine = (i > 0 ? key.slice(0, i) : 'ace') as AiEngine
+  return { engine: AI_ENGINES.includes(engine) ? engine : 'ace', model: i > 0 ? key.slice(i + 1) : key }
+}
 
 /**
  * Mixes the chosen lanes between `start` and `end` into the audio the model hears as context.

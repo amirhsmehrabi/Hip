@@ -133,16 +133,32 @@ PYPROJECT
   "$UV_BIN" sync
 )
 
+step "Stable Audio 3 (sa3-server)"
+# Our HTTP server around Stability's stable-audio-3 package (tracked in external/sa3-server).
+# Weights are gated on Hugging Face and are not fetched here: accept the licence on the
+# stabilityai/stable-audio-3-* pages, "hf auth login", "hf download stabilityai/stable-audio-3-medium".
+STABLE_AUDIO_DIR="$EXTERNAL_DIR/sa3-server"
+if [[ -f "$STABLE_AUDIO_DIR/pyproject.toml" ]]; then
+  (
+    cd "$STABLE_AUDIO_DIR"
+    "$UV_BIN" sync
+  )
+else
+  echo "external/sa3-server is missing from this checkout - skipping Stable Audio 3."
+fi
+
 step "Backend environment"
 FFMPEG_BIN_DIR="$(dirname "$(command -v ffmpeg)")"
 CUDA_BIN_DIR="$(dirname "$(command -v "$NVCC_BIN")")"
 CUDA_LIB_DIR="${CUDA_LIB_DIR:-$(cd "$CUDA_BIN_DIR/.." && pwd)/lib}"
 YUE2_DEVICE="${YUE2_DEVICE:-}"
 ACE_STEP_DEVICE="${ACE_STEP_DEVICE:-}"
+STABLE_AUDIO_DEVICE="${STABLE_AUDIO_DEVICE:-}"
 cat > "$ROOT/backend/.env" <<ENV
 ACE_STEP_DIR=$ACE_DIR
 YUE2_DIR=$AUDIOCPP_DIR
 DEMUCS_DIR=$DEMUCS_DIR
+STABLE_AUDIO_DIR=$STABLE_AUDIO_DIR
 FFMPEG_BIN_DIR=$FFMPEG_BIN_DIR
 CUDA_BIN_DIR=$CUDA_BIN_DIR
 CUDA_LIB_DIR=$CUDA_LIB_DIR
@@ -151,6 +167,7 @@ ACE_STEP_DEVICE=$ACE_STEP_DEVICE
 YUE2_SERVER_HOST=127.0.0.1
 YUE2_SERVER_PORT=$YUE2_PORT
 YUE2_DEVICE=$YUE2_DEVICE
+STABLE_AUDIO_DEVICE=$STABLE_AUDIO_DEVICE
 ENV
 
 echo "Wrote $ROOT/backend/.env"

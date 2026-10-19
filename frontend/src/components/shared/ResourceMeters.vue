@@ -50,7 +50,7 @@ const root = ref<HTMLElement | null>(null)
 const ram = computed(() => system.resources?.ram ?? null)
 const vram = computed(() => system.resources?.vram ?? null)
 const HOLDER_COLORS: Record<MemoryHolder, string> = {
-  ace_step: '#a855f7', yue2: '#3b82f6', demucs: '#10b981', backend: '#06b6d4', other: '#64748b',
+  ace_step: '#a855f7', yue2: '#3b82f6', stable_audio: '#f59e0b', demucs: '#10b981', backend: '#06b6d4', other: '#64748b',
 }
 
 const gb = (bytes: number | null | undefined) => (bytes == null || !Number.isFinite(bytes) ? '–' : (bytes / 1024 ** 3).toFixed(1))

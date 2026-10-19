@@ -1,4 +1,4 @@
-"""Static configuration: paths to the two model repos, ports, launch commands.
+"""Static configuration: paths to the model repos, ports, launch commands.
 
 All values here were verified against the real launch scripts / CLI argparse
 definitions in each project (see the plan doc) rather than guessed, since a
@@ -73,6 +73,9 @@ YUE2_DIR = _env_path("YUE2_DIR", r"E:\AI\YuE2-3B")
 # Separate uv-managed venv for Demucs (stem separation) - not a "model" in
 # MODELS below since it's a one-shot CLI job, not a persistent HTTP server.
 DEMUCS_DIR = _env_path("DEMUCS_DIR", r"E:\AI\Demucs")
+# Stable Audio 3: our own small HTTP server (external/sa3-server, a uv project) around
+# Stability's package. Weights live in the Hugging Face cache, see features.has_stable_audio.
+STABLE_AUDIO_DIR = _env_path("STABLE_AUDIO_DIR", r"E:\AI\StableAudio")
 
 # MuScriptor (audio -> MIDI) is loaded into YuE2's own audiocpp_server rather
 # than being launched separately, so it gets no MODELS entry - only the spec
@@ -143,7 +146,15 @@ ACE_STEP_ON_DEMAND_MODEL_LOAD = os.getenv("ACE_STEP_ON_DEMAND_MODEL_LOAD", "true
 YUE2_SERVER_PORT = int(os.getenv("YUE2_SERVER_PORT", "8080"))
 YUE2_SERVER_HOST = os.getenv("YUE2_SERVER_HOST", "127.0.0.1")
 YUE2_DEVICE = os.getenv("YUE2_DEVICE", "").strip()
-ALLOW_CONCURRENT_MODELS = bool(ACE_STEP_DEVICE and YUE2_DEVICE and ACE_STEP_DEVICE != YUE2_DEVICE)
+STABLE_AUDIO_API_PORT = int(os.getenv("STABLE_AUDIO_API_PORT", "8002"))
+STABLE_AUDIO_DEVICE = os.getenv("STABLE_AUDIO_DEVICE", "").strip()
+# Which Stable Audio 3 checkpoint the server warms up right after it starts (medium needs a
+# CUDA GPU with Flash Attention; small-music / small-sfx run anywhere).
+STABLE_AUDIO_PRELOAD = os.getenv("STABLE_AUDIO_PRELOAD", "medium").strip()
+# Concurrent residency: every engine pinned to its own device, all devices distinct.
+# Otherwise switching stays exclusive (one engine on the GPU at a time).
+_ENGINE_DEVICES = [ACE_STEP_DEVICE, YUE2_DEVICE, STABLE_AUDIO_DEVICE]
+ALLOW_CONCURRENT_MODELS = all(_ENGINE_DEVICES) and len(set(_ENGINE_DEVICES)) == len(_ENGINE_DEVICES)
 CUDA_LIB_DIR = _env_path("CUDA_LIB_DIR", str(CUDA_BIN_DIR.parent / "lib"))
 
 # audiocpp_server is built from source by setup_models.ps1 on Windows (CUDA
@@ -228,6 +239,39 @@ MODELS: dict[str, ModelDefinition] = {
                 ),
                 health_url=f"http://127.0.0.1:{YUE2_SERVER_PORT}/health",
                 startup_timeout=300.0,
+            ),
+        ],
+    ),
+    "stable_audio": ModelDefinition(
+        id="stable_audio",
+        label="Stable Audio 3",
+        proxy_prefix="sa3",
+        proxy_target=f"http://127.0.0.1:{STABLE_AUDIO_API_PORT}",
+        health_url=f"http://127.0.0.1:{STABLE_AUDIO_API_PORT}/health",
+        processes=[
+            ProcessSpec(
+                name="stable_audio_api",
+                cwd=STABLE_AUDIO_DIR,
+                # The server's own venv, not "uv run": uv would try to re-resolve the git
+                # dependency on every start, and the venv is all that is needed at run time.
+                cmd=[
+                    str(STABLE_AUDIO_DIR / ".venv" / ("Scripts" if IS_WINDOWS else "bin") / ("python.exe" if IS_WINDOWS else "python")),
+                    "-m", "sa3_server",
+                    "--host", "127.0.0.1",
+                    "--port", str(STABLE_AUDIO_API_PORT),
+                    "--preload", STABLE_AUDIO_PRELOAD,
+                ],
+                extra_path_dirs=[FFMPEG_BIN_DIR],
+                env={
+                    "PYTHONUTF8": "1",
+                    # Weights are read from the Hugging Face cache; never go online at start.
+                    "HF_HUB_OFFLINE": "1",
+                    **({"CUDA_VISIBLE_DEVICES": STABLE_AUDIO_DEVICE} if STABLE_AUDIO_DEVICE else {}),
+                },
+                health_url=f"http://127.0.0.1:{STABLE_AUDIO_API_PORT}/health",
+                # The server answers /health before the weights are loaded (they warm up in the
+                # background), so this only covers Python start-up and imports.
+                startup_timeout=180.0,
             ),
         ],
     ),

@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { useOrchestratorStore } from '../../stores/orchestrator'
 import { useFeaturesStore } from '../../stores/features'
-import { MODEL_LABELS, MODEL_ROUTES, useModelSwitch } from '../../composables/useModelSwitch'
+import { MODEL_FEATURE, MODEL_LABELS, MODEL_ROUTES, useModelSwitch } from '../../composables/useModelSwitch'
 import { setLocale, currentLocale, type LocaleCode } from '../../i18n'
 import type { ModelId, ModelRuntimeStatus } from '../../types'
 import AppHelpModal from './AppHelpModal.vue'
@@ -16,6 +16,7 @@ import MicIcon from './icons/MicIcon.vue'
 import TargetIcon from './icons/TargetIcon.vue'
 import TimelineIcon from './icons/TimelineIcon.vue'
 import WaveIcon from './icons/WaveIcon.vue'
+import PulseIcon from './icons/PulseIcon.vue'
 
 const orchestrator = useOrchestratorStore()
 const features = useFeaturesStore()
@@ -78,10 +79,20 @@ const LED_CLASSES: Record<ModelRuntimeStatus, string> = {
   stopping: 'bg-status-queued animate-pulse',
   error: 'bg-status-failed shadow-[0_0_6px_var(--color-status-failed)]',
 }
-/** Only one engine runs at a time, so the running one is named; a stopped one keeps just its hollow light. */
+/** One engine runs on the GPU at a time, so the running one is named; a stopped one keeps just its hollow light. */
 function statusShown(id: ModelId): boolean {
   return statusOf(id) !== 'stopped'
 }
+/** Left out at install (or, for Stable Audio, its weights not fetched yet): no light, it cannot run. */
+function installed(id: ModelId): boolean {
+  const feature = MODEL_FEATURE[id]
+  return !feature || features.has(feature)
+}
+/** The engine tabs after ACE-Step (whose tab is followed by LoRA training, so it is written out). */
+const OTHER_ENGINES: { id: ModelId; icon: typeof MicIcon }[] = [
+  { id: 'yue2', icon: MicIcon },
+  { id: 'stable_audio', icon: PulseIcon },
+]
 const STATUS_TEXT_CLASSES: Record<ModelRuntimeStatus, string> = {
   stopped: 'text-text-dim',
   starting: 'text-status-queued',
@@ -89,10 +100,10 @@ const STATUS_TEXT_CLASSES: Record<ModelRuntimeStatus, string> = {
   stopping: 'text-status-queued',
   error: 'text-status-failed',
 }
-const DESC_KEYS: Record<ModelId, string> = { ace_step: 'header.desc.ace', yue2: 'header.desc.yue' }
+const DESC_KEYS: Record<ModelId, string> = { ace_step: 'header.desc.ace', yue2: 'header.desc.yue', stable_audio: 'header.desc.sa3' }
 /** The tab's tooltip: what the engine is for, its state, and, unless it runs, that a click starts it. */
 function engineTitle(id: ModelId): string {
-  if (id === 'yue2' && !features.has('yue2')) return t('notInstalled.yue2.title')
+  if (!installed(id)) return t(`notInstalled.${MODEL_FEATURE[id]}.title`)
   const title = t('header.engineTitle', { model: MODEL_LABELS[id], desc: t(DESC_KEYS[id]), status: t(STATUS_LABEL_KEYS[statusOf(id)]) })
   return statusOf(id) === 'running' ? title : `${title}
 ${t('header.engineStart')}`
@@ -182,31 +193,33 @@ async function onSelect(id: ModelId) {
 
         <span class="mx-2 h-8 w-px shrink-0 self-center bg-border" aria-hidden="true"></span>
 
-        <button
-          type="button"
-          class="relative flex shrink-0 items-center gap-2.5 px-3.5 text-left transition-colors"
-          :class="route.name === MODEL_ROUTES.yue2 ? 'text-text' : 'text-text-dim hover:text-text'"
-          :title="engineTitle('yue2')"
-          :aria-current="route.name === MODEL_ROUTES.yue2 ? 'page' : undefined"
-          @click="onSelect('yue2')"
-        >
-          <MicIcon class="h-[18px] w-[18px] shrink-0" :class="route.name === MODEL_ROUTES.yue2 && 'text-accent1'" />
-          <span class="flex flex-col">
-            <span class="flex items-center gap-2 text-[15px] leading-5 whitespace-nowrap" :class="route.name === MODEL_ROUTES.yue2 ? 'font-semibold' : 'font-medium'">
-              {{ MODEL_LABELS.yue2 }}
-              <!-- left out at install: no light, it cannot run; it says so instead -->
-              <span v-if="!features.has('yue2')" class="hidden rounded border border-border px-1.5 text-[11px] font-medium text-text-dim xl:inline">{{ t('notInstalled.installed') }}</span>
-              <template v-else>
-                <span class="h-2 w-2 shrink-0 rounded-full" :class="LED_CLASSES[statusOf('yue2')]" aria-hidden="true"></span>
-                <span v-if="statusShown('yue2')" class="hidden text-[11px] font-medium xl:inline" :class="STATUS_TEXT_CLASSES[statusOf('yue2')]">{{ t(STATUS_LABEL_KEYS[statusOf('yue2')]) }}</span>
-              </template>
+        <template v-for="engine in OTHER_ENGINES" :key="engine.id">
+          <button
+            type="button"
+            class="relative flex shrink-0 items-center gap-2.5 px-3.5 text-left transition-colors"
+            :class="route.name === MODEL_ROUTES[engine.id] ? 'text-text' : 'text-text-dim hover:text-text'"
+            :title="engineTitle(engine.id)"
+            :aria-current="route.name === MODEL_ROUTES[engine.id] ? 'page' : undefined"
+            @click="onSelect(engine.id)"
+          >
+            <component :is="engine.icon" class="h-[18px] w-[18px] shrink-0" :class="route.name === MODEL_ROUTES[engine.id] && 'text-accent1'" />
+            <span class="flex flex-col">
+              <span class="flex items-center gap-2 text-[15px] leading-5 whitespace-nowrap" :class="route.name === MODEL_ROUTES[engine.id] ? 'font-semibold' : 'font-medium'">
+                {{ MODEL_LABELS[engine.id] }}
+                <!-- left out at install: no light, it cannot run; it says so instead -->
+                <span v-if="!installed(engine.id)" class="hidden rounded border border-border px-1.5 text-[11px] font-medium text-text-dim xl:inline">{{ t('notInstalled.installed') }}</span>
+                <template v-else>
+                  <span class="h-2 w-2 shrink-0 rounded-full" :class="LED_CLASSES[statusOf(engine.id)]" aria-hidden="true"></span>
+                  <span v-if="statusShown(engine.id)" class="hidden text-[11px] font-medium xl:inline" :class="STATUS_TEXT_CLASSES[statusOf(engine.id)]">{{ t(STATUS_LABEL_KEYS[statusOf(engine.id)]) }}</span>
+                </template>
+              </span>
+              <span class="mt-0.5 hidden text-xs leading-4 font-normal whitespace-nowrap text-text-dim xl:block">{{ t(DESC_KEYS[engine.id]) }}</span>
             </span>
-            <span class="mt-0.5 hidden text-xs leading-4 font-normal whitespace-nowrap text-text-dim xl:block">{{ t('header.desc.yue') }}</span>
-          </span>
-          <span v-if="route.name === MODEL_ROUTES.yue2" class="accent-gradient absolute inset-x-3 bottom-0 h-0.5 rounded-full" aria-hidden="true"></span>
-        </button>
+            <span v-if="route.name === MODEL_ROUTES[engine.id]" class="accent-gradient absolute inset-x-3 bottom-0 h-0.5 rounded-full" aria-hidden="true"></span>
+          </button>
 
-        <span class="mx-2 h-8 w-px shrink-0 self-center bg-border" aria-hidden="true"></span>
+          <span class="mx-2 h-8 w-px shrink-0 self-center bg-border" aria-hidden="true"></span>
+        </template>
 
         <router-link
           to="/editor"

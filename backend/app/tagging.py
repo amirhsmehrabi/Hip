@@ -21,9 +21,10 @@ TITLE_MAX = 64
 
 # Which kinds of track are AI output. "upload" is the user's own file and "editor" is a mix made
 # in the app, so neither is labelled as AI-generated.
-AI_MODELS = {"ace_step", "yue2"}
+AI_MODELS = {"ace_step", "yue2", "stable_audio"}
 
 YUE2_LICENSE_NOTE = "YuE2-3B weights are CC BY-NC 4.0: non-commercial use, credit the model when sharing."
+STABLE_AUDIO_LICENSE_NOTE = "Stable Audio 3 weights are under the Stability AI Community License (free below $1M annual revenue)."
 
 
 def short_title(title: str) -> str:
@@ -187,6 +188,8 @@ def build_tags(row: Mapping[str, Any], params: Mapping[str, Any], artist: str, a
         note = f"Generated with Remiqora ({label})."
         if model == "yue2":
             note += " " + YUE2_LICENSE_NOTE
+        elif model == "stable_audio":
+            note += " " + STABLE_AUDIO_LICENSE_NOTE
         tags["comment"] = note
     elif model == "editor":
         tags["comment"] = "Mixed in the Remiqora editor."
