@@ -95,7 +95,7 @@ def build_app(engine: Engine, preload: str | None) -> FastAPI:
         model: Annotated[str, Form()] = "medium",
         prompt: Annotated[str, Form()] = "",
         negative_prompt: Annotated[str, Form()] = "",
-        duration: Annotated[float, Form()] = 30.0,
+        duration: Annotated[float | None, Form()] = None,
         steps: Annotated[int, Form()] = 8,
         cfg_scale: Annotated[float, Form()] = 1.0,
         seed: Annotated[int, Form()] = -1,
@@ -131,9 +131,13 @@ def build_app(engine: Engine, preload: str | None) -> FastAPI:
                 raise HTTPException(400, f"cannot decode audio: {exc}") from exc
             src_seconds = decoded[1].shape[-1] / decoded[0]
             if task == "a2a":
-                duration = src_seconds
+                # Without a duration the cover is as long as the source. A shorter one covers the
+                # start only; a longer one carries on past the source from noise.
+                duration = float(duration) if duration else src_seconds
             elif task == "inpaint":
-                duration = max(float(duration), src_seconds)
+                duration = max(float(duration or 0), src_seconds)
+        if duration is None:
+            duration = 30.0
         max_seconds = MODEL_SPECS[model]["max_seconds"]
         if not (0.5 <= duration <= max_seconds):
             raise HTTPException(400, f"duration must be within 0.5..{max_seconds} s for '{model}'")

@@ -50,6 +50,8 @@ export interface Sa3Reference {
   mode: Sa3RefMode
   /** cover: 0 = loose, 1 = close to the original. */
   closeness: number
+  /** cover: the result's length in seconds, or null for the source's own. */
+  customSec: number | null
   /** repaint: the range to redo, seconds into the reference. */
   maskStart: number
   maskEnd: number
@@ -151,7 +153,7 @@ export const useStableAudioStore = defineStore('stableAudio', {
       if (ref?.mode === 'cover') {
         req.task = 'a2a'
         req.init_noise_level = Math.min(1, Math.max(0, 1 - ref.closeness))
-        req.duration = ref.durationSec
+        req.duration = ref.customSec ?? ref.durationSec
       } else if (ref?.mode === 'repaint') {
         req.task = 'inpaint'
         req.mask_start = [ref.maskStart]
@@ -169,6 +171,7 @@ export const useStableAudioStore = defineStore('stableAudio', {
         ...(ref ? {
           ref_mode: ref.mode, ref_name: ref.name, ref_track_id: ref.trackId, ref_duration: ref.durationSec,
           closeness: ref.mode === 'cover' ? ref.closeness : undefined,
+          custom_sec: ref.mode === 'cover' ? ref.customSec : undefined,
           mask: ref.mode === 'repaint' ? [ref.maskStart, ref.maskEnd] : undefined,
           extend_sec: ref.mode === 'continue' ? ref.extendSec : undefined,
         } : {}),
