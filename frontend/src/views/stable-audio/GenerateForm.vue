@@ -4,11 +4,12 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useStableAudioStore } from '../../stores/stableAudio'
-import type { Sa3Kind } from '../../stores/stableAudio'
+import type { Sa3Kind, Sa3RefMode, Sa3Reference } from '../../stores/stableAudio'
 import type { Sa3ModelId } from '../../api/stableAudio'
 import ChipGroup from '../../components/shared/ChipGroup.vue'
 import HelpIconButton from '../../components/shared/HelpIconButton.vue'
 import HelpModal from '../../components/shared/HelpModal.vue'
+import LibraryPicker from '../../components/editor/LibraryPicker.vue'
 
 const store = useStableAudioStore()
 const { t, tm } = useI18n()
@@ -24,7 +25,80 @@ const steps = ref(8)
 const cfgScale = ref(1)
 const submitting = ref(false)
 const formError = ref('')
-const helpOpen = ref(false)
+const helpOpen = ref<false | 'prompt' | 'ref'>(false)
+
+// ---- Reference track: a file or a library track, remade (cover), partly redone (repaint) or carried on ----
+const useRef = ref(false)
+const refFile = ref<Blob | null>(null)
+const refName = ref('')
+const refDurationSec = ref(0)
+const refTrackId = ref<number | null>(null)
+const refLoading = ref(false)
+const refMode = ref<Sa3RefMode>('cover')
+const closeness = ref(0.5)
+const maskStart = ref(0)
+const maskEnd = ref(10)
+const extendSec = ref(15)
+const pickerOpen = ref(false)
+const refModeOptions = computed(() => (['cover', 'repaint', 'continue'] as Sa3RefMode[]).map((m) => ({ value: m, label: t(`sa3Gen.ref.modes.${m}`) })))
+
+/** Reads the length through an <audio> element: no decoding, works for wav/mp3/flac alike. */
+function audioDuration(blob: Blob): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob)
+    const el = new Audio()
+    el.preload = 'metadata'
+    el.onloadedmetadata = () => {
+      URL.revokeObjectURL(url)
+      resolve(el.duration)
+    }
+    el.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('decode'))
+    }
+    el.src = url
+  })
+}
+async function setReference(blob: Blob, name: string, trackId: number | null) {
+  refLoading.value = true
+  formError.value = ''
+  try {
+    const dur = await audioDuration(blob)
+    if (!Number.isFinite(dur) || dur <= 0) throw new Error('decode')
+    refFile.value = blob
+    refName.value = name
+    refDurationSec.value = dur
+    refTrackId.value = trackId
+    maskStart.value = 0
+    maskEnd.value = Math.min(10, Math.floor(dur))
+  } catch {
+    formError.value = t('sa3Gen.ref.decodeError')
+  } finally {
+    refLoading.value = false
+  }
+}
+function onRefFileChange(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (file) void setReference(file, file.name, null)
+}
+async function onPickFromLibrary(payload: { sourceUrl: string; sourceLabel: string }) {
+  pickerOpen.value = false
+  refLoading.value = true
+  try {
+    const resp = await fetch(payload.sourceUrl)
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+    const m = /\/api\/tracks\/(\d+)\/audio/.exec(payload.sourceUrl)
+    await setReference(await resp.blob(), payload.sourceLabel, m ? Number(m[1]) : null)
+  } catch (err) {
+    formError.value = err instanceof Error ? err.message : String(err)
+    refLoading.value = false
+  }
+}
+/** Seconds the result will have with a reference: the source's, or the source plus the extension. */
+const resultSeconds = computed(() => (refMode.value === 'continue' ? refDurationSec.value + extendSec.value : refDurationSec.value))
+const reference = computed<Sa3Reference | null>(() => (useRef.value && refFile.value
+  ? { file: refFile.value, name: refName.value, durationSec: refDurationSec.value, trackId: refTrackId.value, mode: refMode.value, closeness: closeness.value, maskStart: maskStart.value, maskEnd: maskEnd.value, extendSec: extendSec.value }
+  : null))
 
 const kindOptions = computed(() => [
   { value: 'music', label: t('sa3Gen.kinds.music') },
@@ -64,11 +138,11 @@ watch(() => store.pendingParamsInsert, (p) => {
 })
 
 const base = computed(() => (model.value.endsWith('-base')))
-const durationLabel = computed(() => {
-  const s = duration.value
+function formatClockShort(s: number): string {
   if (s < 60) return `${s % 1 ? s.toFixed(1) : s} ${t('common.secondsUnit')}`
   return `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`
-})
+}
+const durationLabel = computed(() => formatClockShort(duration.value))
 
 function randomSeed() {
   seed.value = Math.floor(Math.random() * 2147483647)
@@ -85,11 +159,26 @@ async function submit() {
     formError.value = t('sa3Gen.noModel')
     return
   }
+  if (useRef.value) {
+    if (!refFile.value) {
+      formError.value = t('sa3Gen.ref.needRef')
+      return
+    }
+    if (refMode.value === 'repaint' && (maskStart.value < 0 || maskEnd.value > refDurationSec.value + 0.05 || maskEnd.value - maskStart.value < 1)) {
+      formError.value = t('sa3Gen.ref.badRange')
+      return
+    }
+    if (resultSeconds.value > maxSeconds.value) {
+      formError.value = t('sa3Gen.ref.tooLong', { v: Math.round(resultSeconds.value), max: maxSeconds.value })
+      return
+    }
+  }
   submitting.value = true
   try {
     await store.generate({
       kind: kind.value, model: model.value, prompt: text, negativePrompt: negativePrompt.value.trim(),
       duration: duration.value, steps: steps.value, cfgScale: cfgScale.value, seed: seed.value, count: count.value,
+      reference: reference.value,
     })
   } catch (err) {
     formError.value = err instanceof Error ? err.message : String(err)
@@ -114,7 +203,7 @@ function applyExample(text: string) {
 
       <div class="flex items-center justify-between gap-3">
         <ChipGroup v-model="kind" :options="kindOptions" />
-        <HelpIconButton :title="t('sa3Gen.help.title')" @click="helpOpen = true" />
+        <HelpIconButton :title="t('sa3Gen.help.title')" @click="helpOpen = 'prompt'" />
       </div>
 
       <div class="space-y-1.5">
@@ -129,7 +218,51 @@ function applyExample(text: string) {
         <p class="text-xs text-text-dim">{{ t('sa3Gen.promptHint') }}</p>
       </div>
 
-      <div class="space-y-1.5">
+      <!-- A reference track: the length then comes from it, so the slider steps aside -->
+      <div class="space-y-2 rounded-lg border border-border bg-panel-2/50 p-3">
+        <label class="flex items-center justify-between text-sm">
+          <span class="flex items-center gap-2 font-medium text-text">
+            <input v-model="useRef" type="checkbox" class="rounded border-border" />
+            {{ t('sa3Gen.ref.toggle') }}
+          </span>
+          <HelpIconButton @click="helpOpen = 'ref'" />
+        </label>
+        <div v-if="useRef" class="space-y-3 pt-1">
+          <div class="flex flex-wrap items-center gap-2">
+            <label class="cursor-pointer rounded-md border border-border px-3 py-1.5 text-xs text-text hover:bg-panel">
+              {{ t('sa3Gen.ref.chooseFile') }}
+              <input type="file" accept="audio/*" class="sr-only" @change="onRefFileChange" />
+            </label>
+            <button type="button" class="rounded-md border border-border px-3 py-1.5 text-xs text-text hover:bg-panel" @click="pickerOpen = true">{{ t('sa3Gen.ref.fromLibrary') }}</button>
+            <span v-if="refLoading" class="text-xs text-text-dim">{{ t('sa3Gen.ref.loading') }}</span>
+            <span v-else-if="refFile" class="min-w-0 truncate text-xs text-text" :title="refName">{{ t('sa3Gen.ref.source', { name: refName, dur: formatClockShort(refDurationSec) }) }}</span>
+            <span v-else class="text-xs text-text-dim">{{ t('sa3Gen.ref.none') }}</span>
+          </div>
+          <ChipGroup v-model="refMode" :options="refModeOptions" />
+          <p class="text-xs text-text-dim">{{ t(`sa3Gen.ref.modeHints.${refMode}`) }}</p>
+          <label v-if="refMode === 'cover'" class="block space-y-1">
+            <span class="text-xs text-text">{{ t('sa3Gen.ref.closeness', { v: closeness.toFixed(2) }) }}</span>
+            <input v-model.number="closeness" type="range" min="0" max="1" step="0.05" class="w-full accent-accent1" />
+          </label>
+          <div v-else-if="refMode === 'repaint'" class="grid grid-cols-2 gap-2">
+            <label class="space-y-1">
+              <span class="block text-xs text-text-dim">{{ t('sa3Gen.ref.rangeFrom') }}</span>
+              <input v-model.number="maskStart" type="number" min="0" :max="refDurationSec" step="0.5" class="w-full rounded-lg border border-border bg-panel-2 px-2 py-1.5 text-sm text-text" />
+            </label>
+            <label class="space-y-1">
+              <span class="block text-xs text-text-dim">{{ t('sa3Gen.ref.rangeTo') }}</span>
+              <input v-model.number="maskEnd" type="number" min="0" :max="refDurationSec" step="0.5" class="w-full rounded-lg border border-border bg-panel-2 px-2 py-1.5 text-sm text-text" />
+            </label>
+          </div>
+          <label v-else class="block space-y-1">
+            <span class="text-xs text-text">{{ t('sa3Gen.ref.extend', { v: formatClockShort(extendSec) }) }}</span>
+            <input v-model.number="extendSec" type="range" min="2" :max="Math.max(2, maxSeconds - Math.ceil(refDurationSec))" step="1" class="w-full accent-accent1" />
+          </label>
+          <p v-if="refFile" class="text-xs tabular-nums text-text-dim">{{ t('sa3Gen.ref.length', { v: formatClockShort(resultSeconds) }) }}</p>
+        </div>
+      </div>
+
+      <div v-if="!useRef" class="space-y-1.5">
         <div class="flex items-baseline justify-between">
           <label class="text-sm font-medium text-text" for="sa3-duration">{{ t('sa3Gen.duration') }}</label>
           <span class="text-xs tabular-nums text-text-dim">{{ durationLabel }}</span>
@@ -182,7 +315,12 @@ function applyExample(text: string) {
       </details>
     </div>
 
-    <HelpModal :open="helpOpen" :title="t('sa3Gen.help.title')" @close="helpOpen = false">
+    <LibraryPicker v-if="pickerOpen" @pick="onPickFromLibrary" @close="pickerOpen = false" />
+
+    <HelpModal :open="helpOpen === 'ref'" :title="t('sa3Gen.ref.help.title')" @close="helpOpen = false">
+      <p>{{ t('sa3Gen.ref.help.text') }}</p>
+    </HelpModal>
+    <HelpModal :open="helpOpen === 'prompt'" :title="t('sa3Gen.help.title')" @close="helpOpen = false">
       <div class="space-y-4">
         <p>{{ t('sa3Gen.help.intro') }}</p>
         <section>

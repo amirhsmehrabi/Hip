@@ -159,6 +159,8 @@ function copyParamsToForm() {
         <div class="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
           <span class="rounded-md border border-border px-1.5 py-px text-xs font-medium leading-4 text-text-dim">Stable Audio 3 · {{ job.model }}</span>
           <span class="rounded-md border border-border px-1.5 py-px text-xs font-medium leading-4 text-text-dim">{{ t(`sa3Gen.kinds.${job.kind}`) }}</span>
+          <!-- made from a reference track: which way, and from what -->
+          <span v-if="job.params.ref_mode" class="rounded-md border border-accent1/40 px-1.5 py-px text-xs font-medium leading-4 text-accent1" :title="String(job.params.ref_name || '')">{{ t(`sa3Gen.ref.modes.${job.params.ref_mode}`) }}</span>
           <span class="text-xs text-text-dim" :title="created.full">{{ created.label }}</span>
           <span v-if="job.prompt" class="h-3.5 w-px bg-border" aria-hidden="true"></span>
           <StyleChips class="min-w-0" :max="4" :text="job.prompt" @more="expanded = true" />

@@ -38,6 +38,25 @@ export interface Sa3Job {
   index?: number
 }
 
+/** What to do with a reference track: remake it in a new style, redo a range, or carry it on. */
+export type Sa3RefMode = 'cover' | 'repaint' | 'continue'
+
+export interface Sa3Reference {
+  file: Blob
+  name: string
+  durationSec: number
+  /** The library track it came from, if any. */
+  trackId: number | null
+  mode: Sa3RefMode
+  /** cover: 0 = loose, 1 = close to the original. */
+  closeness: number
+  /** repaint: the range to redo, seconds into the reference. */
+  maskStart: number
+  maskEnd: number
+  /** continue: how many seconds to add after the end. */
+  extendSec: number
+}
+
 export interface Sa3GenerateParams {
   kind: Sa3Kind
   model: Sa3ModelId
@@ -48,6 +67,7 @@ export interface Sa3GenerateParams {
   cfgScale: number
   seed: number
   count: number
+  reference?: Sa3Reference | null
 }
 
 export const useStableAudioStore = defineStore('stableAudio', {
@@ -121,9 +141,37 @@ export const useStableAudioStore = defineStore('stableAudio', {
     },
     async generate(p: Sa3GenerateParams) {
       const created = Date.now()
-      const params = {
-        task: 'text', kind: p.kind, model: p.model, prompt: p.prompt, negative_prompt: p.negativePrompt,
+      const ref = p.reference ?? null
+      // The reference decides the task and the length: a cover keeps the source length, a repaint too,
+      // a continuation is the source plus the extension (the mask covers the part past the source).
+      const req: api.Sa3JobRequest = {
+        task: 'text', model: p.model, prompt: p.prompt, negative_prompt: p.negativePrompt || undefined,
         duration: p.duration, steps: p.steps, cfg_scale: p.cfgScale, seed: p.seed, batch_size: p.count,
+      }
+      if (ref?.mode === 'cover') {
+        req.task = 'a2a'
+        req.init_noise_level = Math.min(1, Math.max(0, 1 - ref.closeness))
+        req.duration = ref.durationSec
+      } else if (ref?.mode === 'repaint') {
+        req.task = 'inpaint'
+        req.mask_start = [ref.maskStart]
+        req.mask_end = [ref.maskEnd]
+        req.duration = ref.durationSec
+      } else if (ref?.mode === 'continue') {
+        req.task = 'inpaint'
+        req.mask_start = [ref.durationSec]
+        req.mask_end = [ref.durationSec + ref.extendSec]
+        req.duration = ref.durationSec + ref.extendSec
+      }
+      const params = {
+        task: req.task, kind: p.kind, model: p.model, prompt: p.prompt, negative_prompt: p.negativePrompt,
+        duration: req.duration, steps: p.steps, cfg_scale: p.cfgScale, seed: p.seed, batch_size: p.count,
+        ...(ref ? {
+          ref_mode: ref.mode, ref_name: ref.name, ref_track_id: ref.trackId, ref_duration: ref.durationSec,
+          closeness: ref.mode === 'cover' ? ref.closeness : undefined,
+          mask: ref.mode === 'repaint' ? [ref.maskStart, ref.maskEnd] : undefined,
+          extend_sec: ref.mode === 'continue' ? ref.extendSec : undefined,
+        } : {}),
       }
       const ids: string[] = []
       for (let i = 0; i < p.count; i++) {
@@ -135,10 +183,7 @@ export const useStableAudioStore = defineStore('stableAudio', {
         })
       }
       try {
-        const res = await api.submitJob({
-          task: 'text', model: p.model, prompt: p.prompt, negative_prompt: p.negativePrompt || undefined,
-          duration: p.duration, steps: p.steps, cfg_scale: p.cfgScale, seed: p.seed, batch_size: p.count,
-        })
+        const res = await api.submitJob(req, ref?.file ?? null)
         this._started[res.job_id] = performance.now()
         for (const id of ids) {
           const job = this.jobs.find((j) => j.id === id)
