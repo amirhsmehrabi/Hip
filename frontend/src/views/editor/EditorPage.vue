@@ -22,6 +22,7 @@ import TimelineLane from '../../components/editor/TimelineLane.vue'
 import LibraryPicker from '../../components/editor/LibraryPicker.vue'
 import EditorHelpModal from '../../components/editor/EditorHelpModal.vue'
 import AiPartPanel from '../../components/editor/AiPartPanel.vue'
+import SfxPanel from '../../components/editor/SfxPanel.vue'
 import * as stemsApi from '../../api/stems'
 import AiArrangerGuide from '../../components/editor/AiArrangerGuide.vue'
 import EditorHotkeysModal from '../../components/editor/EditorHotkeysModal.vue'
@@ -40,6 +41,7 @@ import PlusIcon from '../../components/shared/icons/PlusIcon.vue'
 import RedoIcon from '../../components/shared/icons/RedoIcon.vue'
 import SaveIcon from '../../components/shared/icons/SaveIcon.vue'
 import SparklesIcon from '../../components/shared/icons/SparklesIcon.vue'
+import SampleIcon from '../../components/shared/icons/SampleIcon.vue'
 import UndoIcon from '../../components/shared/icons/UndoIcon.vue'
 import { useFeaturesStore } from '../../stores/features'
 
@@ -68,6 +70,9 @@ const showHotkeys = ref(false)
 /** The AI part panel stays mounted once opened, so its jobs keep landing on lanes while it is hidden. */
 const showAiPanel = ref(false)
 const aiPanelMounted = ref(false)
+/** The samples panel likewise: its results keep arriving while it is hidden. */
+const showSfxPanel = ref(false)
+const sfxPanelMounted = ref(false)
 /** The mixer under the timeline folds away to give the tracks the height; remembered in this browser. */
 const MIXER_KEY = 'remiqora_editor_mixer'
 function readMixerOpen(): boolean {
@@ -177,7 +182,9 @@ function placeOf(panel: DockPanel): DockSide {
   return docks[panel] === 'right' && !wideScreen.value ? 'bottom' : docks[panel]
 }
 const rightDockUsed = computed(() =>
-  (aiPanelMounted.value && showAiPanel.value && placeOf('ai') === 'right') || (mixerOpen.value && placeOf('mixer') === 'right'),
+  (aiPanelMounted.value && showAiPanel.value && placeOf('ai') === 'right')
+  || (sfxPanelMounted.value && showSfxPanel.value && placeOf('sfx') === 'right')
+  || (mixerOpen.value && placeOf('mixer') === 'right'),
 )
 
 const workAreaEl = ref<HTMLElement | null>(null)
@@ -348,6 +355,10 @@ function playFrom(sec: number): void {
 function toggleAiPanel(): void {
   aiPanelMounted.value = true
   showAiPanel.value = !showAiPanel.value
+}
+function toggleSfxPanel(): void {
+  sfxPanelMounted.value = true
+  showSfxPanel.value = !showSfxPanel.value
 }
 
 let loopDragMode: 'start' | 'end' | 'move' | null = null
@@ -1295,6 +1306,17 @@ onBeforeRouteLeave((_to, _from, next) => {
             <SparklesIcon class="h-3.5 w-3.5 shrink-0" />
             {{ t('aiPart.button') }}
           </button>
+          <button
+            type="button"
+            class="flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs font-medium transition-all duration-200 active:scale-95"
+            :class="showSfxPanel ? 'border-accent1 bg-accent1/10 text-accent1' : 'border-accent1/50 text-text hover:bg-panel'"
+            :aria-pressed="showSfxPanel"
+            :title="t('sfx.buttonTitle')"
+            @click="toggleSfxPanel"
+          >
+            <SampleIcon class="h-3.5 w-3.5 shrink-0" />
+            {{ t('sfx.button') }}
+          </button>
           <button type="button" class="flex items-center gap-1.5 rounded-lg border border-border/60 px-3 py-1.5 text-xs font-medium text-text hover:bg-panel transition-all duration-200 active:scale-95" @click="onAddLaneClick">
             <PlusIcon class="h-3.5 w-3.5 shrink-0" />
             {{ t('editor.addTrack') }}
@@ -1455,6 +1477,13 @@ onBeforeRouteLeave((_to, _from, next) => {
             <DockHandle :side="docks.ai" :label="t('editor.dock.moveArranger')" @move="(side) => (docks.ai = side)" @drag-start="(e) => onDockDragStart('ai', e)" />
           </template>
         </AiPartPanel>
+      </Teleport>
+      <Teleport v-if="sfxPanelMounted" defer :to="`#editor-dock-${placeOf('sfx')}`">
+        <SfxPanel v-show="showSfxPanel" :dock="placeOf('sfx')" :buffers="buffers" @play-from="playFrom" @close="showSfxPanel = false">
+          <template #handle>
+            <DockHandle :side="docks.sfx" :label="t('editor.dock.moveSfx')" @move="(side) => (docks.sfx = side)" @drag-start="(e) => onDockDragStart('sfx', e)" />
+          </template>
+        </SfxPanel>
       </Teleport>
       <Teleport defer :to="`#editor-dock-${placeOf('mixer')}`">
         <!-- Channel Strip Panel: the mixer with its effects -->

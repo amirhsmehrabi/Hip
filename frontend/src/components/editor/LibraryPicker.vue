@@ -41,14 +41,18 @@ onMounted(async () => {
 })
 
 // ---- Search and source filter ----
-type Filter = 'all' | SavedTrack['model'] | 'ai'
-const FILTERS = ['all', 'ace_step', 'yue2', 'stable_audio', 'editor', 'ai', 'upload'] as const
+type Filter = 'all' | SavedTrack['model'] | 'ai' | 'sfx'
+const FILTERS = ['all', 'ace_step', 'yue2', 'stable_audio', 'editor', 'ai', 'sfx', 'upload'] as const
 /** A variant the AI arranger saved: a working file of a project, so it stays out of "All" and "Editor". */
 function isAiVariant(trk: SavedTrack): boolean {
   return trk.model === 'editor' && !!trk.params?.ai_part
 }
+/** A sound from the editor's samples panel: short working material, listed under its own filter. */
+function isSfx(trk: SavedTrack): boolean {
+  return trk.model === 'editor' && !!trk.params?.sfx
+}
 function groupOf(trk: SavedTrack): Exclude<Filter, 'all'> {
-  return isAiVariant(trk) ? 'ai' : trk.model
+  return isAiVariant(trk) ? 'ai' : isSfx(trk) ? 'sfx' : trk.model
 }
 const filter = ref<Filter>('all')
 /** Only tracks already split into stems (they add as stems at once, without Demucs). */
@@ -59,12 +63,12 @@ const counts = computed(() => {
   for (const trk of tracks.value) {
     const g = groupOf(trk)
     c[g] = (c[g] ?? 0) + 1
-    if (g !== 'ai') c.all++
+    if (g !== 'ai' && g !== 'sfx') c.all++
   }
   return c
 })
 function inFilter(trk: SavedTrack): boolean {
-  return filter.value === 'all' ? !isAiVariant(trk) : groupOf(trk) === filter.value
+  return filter.value === 'all' ? !isAiVariant(trk) && !isSfx(trk) : groupOf(trk) === filter.value
 }
 /** Sources the library actually has; "all" always. */
 const filters = computed(() => FILTERS.filter((f) => f === 'all' || counts.value[f]))

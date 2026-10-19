@@ -1,0 +1,358 @@
+<script setup lang="ts">
+// "Samples": one-shots, loops and textures from Stable Audio 3, auditioned in a strip of results and
+// placed on the timeline by hand (a new lane, or the selected lane at the playhead). Same shell as the
+// AI arranger: a docked, single-root panel with a grip, a top row that keeps the action in view.
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { decodeStem } from '../../audio/mixerEngine'
+import type { Clip } from '../../audio/timelineTypes'
+import { claimPlayback, fetchAndComputePeaks, releasePlaybackIfCurrent } from '../../composables/audioPlayback'
+import { useEditorStore } from '../../stores/editor'
+import { useFeaturesStore } from '../../stores/features'
+import { useOrchestratorStore } from '../../stores/orchestrator'
+import { SFX_KINDS, useSfxStore } from '../../stores/sfx'
+import type { SfxJob, SfxKind, SfxVariant } from '../../stores/sfx'
+import { useStableAudioStore } from '../../stores/stableAudio'
+import type { Sa3ModelId } from '../../api/stableAudio'
+import { MODEL_LABELS } from '../../composables/useModelSwitch'
+import type { DockSide } from '../../utils/dock'
+import ChipGroup from '../shared/ChipGroup.vue'
+import HelpIconButton from '../shared/HelpIconButton.vue'
+import HelpModal from '../shared/HelpModal.vue'
+import PauseIcon from '../shared/icons/PauseIcon.vue'
+import PlayIcon from '../shared/icons/PlayIcon.vue'
+import PlusIcon from '../shared/icons/PlusIcon.vue'
+import SampleIcon from '../shared/icons/SampleIcon.vue'
+
+const props = defineProps<{ buffers: Map<string, AudioBuffer>; dock?: DockSide }>()
+const narrow = computed(() => props.dock === 'right')
+const emit = defineEmits<{ close: []; 'play-from': [sec: number] }>()
+
+const { t, tm } = useI18n()
+const store = useEditorStore()
+const sfxStore = useSfxStore()
+const sa3Store = useStableAudioStore()
+const orchestrator = useOrchestratorStore()
+const features = useFeaturesStore()
+
+// ---- Form ----
+const kind = ref<SfxKind>('oneshot')
+const captions = ref<Record<SfxKind, string>>({ oneshot: '', loop: '', texture: '' })
+const oneshotSec = ref(2)
+const loopBars = ref(2)
+const textureSec = ref(15)
+const count = ref(2)
+const target = ref<'new' | 'selected'>('new')
+const model = ref<Sa3ModelId>('small-sfx')
+const preparing = ref(false)
+const formError = ref<string | null>(null)
+const helpOpen = ref(false)
+
+const PLACEHOLDERS: Record<SfxKind, string> = {
+  oneshot: 'punchy 808 kick, short decay, slight saturation',
+  loop: 'dusty boom-bap drums, swung hi-hats, vinyl crackle',
+  texture: 'rain on a tin roof, distant thunder, soft wind',
+}
+const kindOptions = computed(() => SFX_KINDS.map((k) => ({ value: k, label: t(`sfx.kinds.${k}`) })))
+const barOptions = [1, 2, 4, 8].map((n) => ({ value: n, label: String(n) }))
+const countOptions = [1, 2, 4].map((n) => ({ value: n, label: String(n) }))
+const bpm = computed(() => store.project.bpm || 120)
+const barSec = computed(() => (4 * 60) / bpm.value)
+const duration = computed(() => (kind.value === 'loop' ? loopBars.value * barSec.value : kind.value === 'oneshot' ? oneshotSec.value : textureSec.value))
+function fmtSec(s: number): string {
+  return s < 10 ? `${s.toFixed(1)} ${t('common.secondsUnit')}` : `${Math.round(s)} ${t('common.secondsUnit')}`
+}
+
+// ---- Engine ----
+const sa3Status = computed(() => orchestrator.statuses.stable_audio?.status ?? 'stopped')
+const sa3Running = computed(() => orchestrator.activeModel === 'stable_audio' && sa3Status.value === 'running')
+const engineLabel = MODEL_LABELS.stable_audio
+/** Checkpoints to offer: what the running engine reports, else what is on the disk (features). */
+const modelChoices = computed<{ id: Sa3ModelId; label: string }[]>(() => {
+  const reported = sa3Store.models.filter((m) => m.available)
+  if (reported.length) return reported.map((m) => ({ id: m.id, label: `${m.label} · ${m.params}` }))
+  return (features.features.stable_audio_models as Sa3ModelId[]).map((id) => ({ id, label: id }))
+})
+const modelLoaded = computed(() => sa3Store.models.find((m) => m.id === model.value)?.loaded ?? true)
+watch(sa3Running, (running) => { if (running) void sa3Store.refreshModels() }, { immediate: true })
+// small-sfx is the sound model; medium does sounds too and stands in when small-sfx is not downloaded.
+watch(modelChoices, (list) => {
+  if (list.some((m) => m.id === model.value)) return
+  model.value = list.find((m) => m.id === 'small-sfx')?.id ?? list.find((m) => m.id === 'medium')?.id ?? list[0]?.id ?? 'medium'
+}, { immediate: true })
+async function startEngine() {
+  try {
+    await orchestrator.switchModel('stable_audio')
+  } catch {
+    // orchestrator.switchError is shown in the header
+  }
+}
+
+// ---- Generate ----
+const canGenerate = computed(() => sa3Running.value && !preparing.value && !!captions.value[kind.value].trim() && modelChoices.value.length > 0)
+async function generate() {
+  formError.value = null
+  const caption = captions.value[kind.value].trim()
+  if (!caption) {
+    formError.value = t('sfx.needCaption')
+    return
+  }
+  preparing.value = true
+  try {
+    await sfxStore.submit({ kind: kind.value, caption, model: model.value, duration: duration.value, bpm: bpm.value, bars: loopBars.value, count: count.value }, store.session)
+  } catch (e) {
+    formError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    preparing.value = false
+  }
+}
+function applyExample(ex: { kind: SfxKind; text: string }) {
+  kind.value = ex.kind
+  captions.value[ex.kind] = ex.text
+  helpOpen.value = false
+}
+
+// ---- Results ----
+const jobs = computed(() => sfxStore.jobs.filter((j) => j.session === store.session))
+const peaks = ref<Record<string, number[]>>({})
+watch(jobs, (list) => {
+  for (const job of list) for (const v of job.variants) {
+    if (peaks.value[v.url]) continue
+    peaks.value[v.url] = []
+    void fetchAndComputePeaks(v.url, 36).then((p) => { peaks.value[v.url] = p }).catch(() => {})
+  }
+}, { deep: true, immediate: true })
+
+/** One <audio> for the whole strip: a click on another result switches to it. */
+const audio = new Audio()
+const playingUrl = ref<string | null>(null)
+audio.addEventListener('ended', () => { playingUrl.value = null })
+audio.addEventListener('pause', () => { if (audio.ended || audio.currentTime === 0) playingUrl.value = null })
+function toggle(v: SfxVariant) {
+  if (playingUrl.value === v.url) {
+    audio.pause()
+    playingUrl.value = null
+    return
+  }
+  audio.src = v.url
+  claimPlayback(audio)
+  playingUrl.value = v.url
+  void audio.play().catch(() => { playingUrl.value = null })
+}
+onBeforeUnmount(() => {
+  audio.pause()
+  releasePlaybackIfCurrent(audio)
+})
+
+const inserting = ref<string | null>(null)
+async function insert(job: SfxJob, v: SfxVariant) {
+  if (job.session !== store.session) return
+  inserting.value = v.url
+  try {
+    let buf = props.buffers.get(v.url)
+    if (!buf) {
+      buf = await decodeStem(v.url)
+      props.buffers.set(v.url, buf)
+    }
+    const r = job.request
+    const loop = store.project.loopRegion?.enabled ? store.project.loopRegion : null
+    const clip: Clip = {
+      id: crypto.randomUUID(),
+      type: 'audio',
+      sourceUrl: v.url,
+      sourceLabel: v.title,
+      timelineStart: loop ? loop.start : store.playheadSec,
+      trimStart: 0,
+      trimEnd: buf.duration,
+      // A loop was made at the project tempo, so W (warp) later follows that; a sound keeps the project's.
+      originalBpm: r.kind === 'loop' ? r.bpm : bpm.value,
+      ...(r.kind === 'oneshot' ? { fadeInDuration: 0.005, fadeOutDuration: 0.005 } : {}),
+    }
+    const selected = store.project.lanes.find((l) => l.id === store.selectedLaneId)
+    if (target.value === 'selected' && selected) {
+      store.addClip(selected.id, clip)
+    } else {
+      store.insertLanes([{ name: v.title, colorId: r.kind === 'loop' ? 'cyan' : 'slate', clips: [clip] }])
+    }
+    v.used = true
+  } catch (e) {
+    formError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    inserting.value = null
+  }
+}
+function statusKey(job: SfxJob): string {
+  return job.status === 'saving' ? 'sfx.saving' : `jobStatus.${job.status}`
+}
+</script>
+
+<template>
+  <section
+    class="flex flex-col gap-2.5 rounded-xl border border-border/60 bg-panel/70 p-3 shadow-sm backdrop-blur-md"
+    :class="props.dock === 'right' ? 'shrink-0' : 'lg:max-h-[48svh] lg:min-h-[8rem] lg:overflow-y-auto'"
+    :aria-label="t('sfx.title')"
+  >
+    <!-- Top row: the grip, the title, the kind, the hint, variants, the action, close. The comment sits inside
+         <section> so the component stays single-root (v-show needs it). -->
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <div class="flex items-center gap-1">
+        <slot name="handle" />
+        <h2 class="flex items-center gap-1.5 text-sm font-semibold text-text"><SampleIcon class="h-4 w-4 shrink-0 text-accent1" />{{ t('sfx.title') }}</h2>
+        <HelpIconButton class="ml-0.5" @click="helpOpen = true" />
+      </div>
+      <div class="rounded-lg border border-border bg-panel-2 p-0.5" :class="narrow ? 'order-2 flex w-full' : 'inline-flex'" role="group" :aria-label="t('sfx.kindLabel')">
+        <button
+          v-for="o in kindOptions"
+          :key="o.value"
+          type="button"
+          class="rounded-md py-1 transition-colors"
+          :class="[narrow ? 'flex-auto px-2 text-xs' : 'px-3 text-sm', kind === o.value ? 'accent-gradient text-white shadow-sm' : 'text-text-dim hover:text-text']"
+          :aria-pressed="kind === o.value"
+          @click="kind = o.value"
+        >
+          {{ o.label }}
+        </button>
+      </div>
+      <p class="min-w-[12rem] flex-1 text-xs text-text-dim" :class="narrow && 'order-3 basis-full'">{{ t(`sfx.kindHints.${kind}`) }}</p>
+      <div class="flex items-center gap-2" :class="narrow && 'order-4'">
+        <span class="text-[13px] font-medium text-text">{{ t('sfx.variants') }}</span>
+        <ChipGroup v-model="count" small :options="countOptions" />
+      </div>
+      <button
+        type="button"
+        class="accent-gradient flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium text-white shadow-md shadow-accent1/20 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:hover:scale-100"
+        :class="narrow && 'order-5'"
+        :disabled="!canGenerate"
+        @click="generate"
+      >
+        <SampleIcon class="h-4 w-4 shrink-0" />
+        {{ preparing ? t('sfx.generating') : t('sfx.generate') }}
+      </button>
+      <button type="button" class="rounded-lg border border-border px-2 py-1 text-xs text-text-dim hover:bg-panel-2" :class="narrow && 'order-1 ml-auto'" :aria-label="t('sfx.close')" @click="emit('close')">✕</button>
+    </div>
+    <p v-if="sa3Running && !modelLoaded" class="-mt-1 text-right text-[11px] text-text-dim">{{ t('sfx.firstLoadNote') }}</p>
+    <p v-if="formError" class="rounded-lg bg-status-failed/10 p-2 text-xs text-status-failed">{{ formError }}</p>
+
+    <!-- Stable Audio 3 must be running (starting it stops the other engine) -->
+    <div v-if="!sa3Running" class="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-panel-2 p-3 text-sm">
+      <p v-if="sa3Status === 'starting'" class="flex items-center gap-2 text-text-dim">
+        <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-accent1 border-t-transparent"></span>
+        {{ t('aiPart.engineStarting', { engine: engineLabel }) }}
+      </p>
+      <template v-else-if="!features.has('stableAudio')">
+        <p class="text-text-dim">{{ t('notInstalled.stableAudio.text') }}</p>
+      </template>
+      <template v-else>
+        <p class="text-text-dim">{{ t('sfx.offline') }}</p>
+        <button type="button" class="accent-gradient rounded-lg px-3 py-1.5 text-xs font-medium text-white" :disabled="orchestrator.switching" @click="startEngine">{{ t('aiPart.startEngine', { engine: engineLabel }) }}</button>
+        <span v-if="orchestrator.activeModel && orchestrator.activeModel !== 'stable_audio'" class="text-[11px] text-text-dim">{{ t('aiPart.engineSwitchNote', { running: MODEL_LABELS[orchestrator.activeModel] }) }}</span>
+      </template>
+    </div>
+
+    <!-- The form: what the sound is, how long, which model, where it goes -->
+    <div class="flex flex-wrap items-start gap-x-6 gap-y-3">
+      <div class="flex min-w-[16rem] flex-[1.4] flex-col gap-1">
+        <label for="sfx-caption" class="text-[13px] font-medium text-text">{{ t('sfx.caption') }}</label>
+        <textarea id="sfx-caption" v-model="captions[kind]" rows="2" class="w-full rounded-lg border border-border bg-panel-2 p-2 text-sm text-text" :placeholder="PLACEHOLDERS[kind]"></textarea>
+        <span class="text-[11px] text-text-dim">{{ t('sfx.captionHint') }}</span>
+      </div>
+
+      <div class="flex min-w-[12rem] flex-1 flex-col gap-2.5">
+        <label v-if="kind === 'oneshot'" class="flex flex-col gap-1">
+          <span class="text-[13px] font-medium text-text">{{ t('sfx.length', { v: fmtSec(oneshotSec) }) }}</span>
+          <input v-model.number="oneshotSec" type="range" min="0.5" max="5" step="0.5" class="w-full accent-accent1" />
+        </label>
+        <div v-else-if="kind === 'loop'" class="flex flex-col gap-1">
+          <span class="text-[13px] font-medium text-text">{{ t('sfx.bars', { v: fmtSec(duration) }) }}</span>
+          <ChipGroup v-model="loopBars" small :options="barOptions" />
+          <span class="text-[11px] text-text-dim">{{ t('sfx.loopCaveat', { bpm }) }}</span>
+        </div>
+        <label v-else class="flex flex-col gap-1">
+          <span class="text-[13px] font-medium text-text">{{ t('sfx.length', { v: fmtSec(textureSec) }) }}</span>
+          <input v-model.number="textureSec" type="range" min="5" max="30" step="1" class="w-full accent-accent1" />
+        </label>
+        <label class="flex flex-col gap-1">
+          <span class="text-[13px] font-medium text-text">{{ t('sfx.model') }}</span>
+          <select v-model="model" class="rounded-lg border border-border bg-panel-2 px-2 py-1.5 text-sm text-text" :disabled="modelChoices.length === 0">
+            <option v-for="m in modelChoices" :key="m.id" :value="m.id">{{ m.label }}</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="flex min-w-[12rem] flex-1 flex-col gap-1">
+        <span class="text-[13px] font-medium text-text">{{ t('sfx.target') }}</span>
+        <div class="inline-flex self-start rounded-lg border border-border bg-panel-2 p-0.5" role="group" :aria-label="t('sfx.target')">
+          <button type="button" class="rounded-md px-2.5 py-1 text-xs transition-colors" :class="target === 'new' ? 'bg-panel text-text shadow-sm ring-1 ring-border' : 'text-text-dim hover:text-text'" :aria-pressed="target === 'new'" @click="target = 'new'">{{ t('sfx.targetNew') }}</button>
+          <button type="button" class="rounded-md px-2.5 py-1 text-xs transition-colors" :class="target === 'selected' ? 'bg-panel text-text shadow-sm ring-1 ring-border' : 'text-text-dim hover:text-text'" :aria-pressed="target === 'selected'" @click="target = 'selected'">{{ t('sfx.targetSelected') }}</button>
+        </div>
+        <span class="text-[11px] text-text-dim">{{ t('sfx.targetHint') }}</span>
+      </div>
+    </div>
+
+    <!-- Results, newest first: audition, then place -->
+    <div v-if="jobs.length" class="flex gap-3 overflow-x-auto pb-1">
+      <article v-for="job in jobs" :key="job.id" class="flex w-96 shrink-0 flex-col gap-2 rounded-lg border border-border/60 bg-panel-2/60 p-2.5 text-xs">
+        <div class="flex items-center gap-2">
+          <span class="h-2 w-2 shrink-0 rounded-full" :class="job.request.kind === 'loop' ? 'bg-cyan-400' : 'bg-slate-400'" aria-hidden="true"></span>
+          <p class="min-w-0 flex-1 truncate font-medium text-text" :title="job.request.caption">{{ t(`sfx.kinds.${job.request.kind}`) }} · {{ job.request.caption }}</p>
+          <span class="shrink-0 text-text-dim">{{ fmtSec(job.request.duration) }}</span>
+          <button v-if="job.status === 'queued' || job.status === 'running'" type="button" class="shrink-0 text-text-dim hover:text-status-failed" @click="sfxStore.cancel(job.id)">{{ t('aiPart.cancel') }}</button>
+          <button v-else type="button" class="shrink-0 text-text-dim hover:text-text" :title="t('sfx.dismissTitle')" @click="sfxStore.removeJob(job.id)">{{ t('aiPart.dismiss') }}</button>
+        </div>
+        <div v-if="job.status === 'queued' || job.status === 'running' || job.status === 'saving'" class="space-y-1">
+          <div class="h-1.5 w-full overflow-hidden rounded-full bg-panel">
+            <div class="h-full accent-gradient transition-[width]" :class="job.status === 'queued' && 'w-1/5 animate-pulse'" :style="job.status !== 'queued' ? { width: `${Math.max(5, job.progress)}%` } : undefined"></div>
+          </div>
+          <p class="text-text-dim">{{ t(statusKey(job)) }}</p>
+        </div>
+        <p v-else-if="job.status === 'failed'" class="rounded bg-status-failed/10 p-1.5 text-status-failed">{{ job.error }}</p>
+        <p v-else-if="job.status === 'cancelled'" class="text-text-dim">{{ t('aceJob.cancelled') }}</p>
+        <ul v-else class="flex flex-col gap-1.5">
+          <li v-for="v in job.variants" :key="v.url" class="flex items-center gap-2">
+            <button type="button" class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border text-text hover:border-accent1" :aria-label="playingUrl === v.url ? t('sfx.pause') : t('sfx.play')" @click="toggle(v)">
+              <PauseIcon v-if="playingUrl === v.url" class="h-3 w-3" />
+              <PlayIcon v-else class="h-3 w-3" />
+            </button>
+            <!-- a tiny waveform: enough to tell a hit from a wash -->
+            <span class="flex h-6 min-w-0 flex-1 items-end gap-px" aria-hidden="true">
+              <span v-for="(p, i) in (peaks[v.url] || [])" :key="i" class="w-full rounded-sm bg-text-dim/70" :style="{ height: `${Math.max(8, p * 100)}%` }"></span>
+            </span>
+            <span class="w-10 shrink-0 text-right tabular-nums text-text-dim">{{ v.durationSec != null ? fmtSec(v.durationSec) : '' }}</span>
+            <button
+              type="button"
+              class="flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 font-medium transition-colors disabled:opacity-50"
+              :class="v.used ? 'border-border text-text-dim' : 'border-accent1/50 text-accent1 hover:bg-accent1/10'"
+              :disabled="inserting === v.url"
+              @click="insert(job, v)"
+            >
+              <PlusIcon class="h-3 w-3" />
+              {{ v.used ? t('sfx.addAgain') : t('sfx.add') }}
+            </button>
+          </li>
+        </ul>
+      </article>
+    </div>
+
+    <HelpModal :open="helpOpen" :title="t('sfx.help.title')" @close="helpOpen = false">
+      <div class="space-y-4">
+        <p>{{ t('sfx.help.intro') }}</p>
+        <section>
+          <h4 class="mb-1.5 text-sm font-semibold text-text">{{ t('sfx.help.tipsTitle') }}</h4>
+          <ul class="list-disc space-y-1 pl-4">
+            <li v-for="x in (tm('sfx.help.tips') as string[])" :key="x">{{ x }}</li>
+          </ul>
+        </section>
+        <section>
+          <h4 class="mb-1.5 text-sm font-semibold text-text">{{ t('sfx.help.examplesTitle') }}</h4>
+          <ul class="space-y-1.5">
+            <li v-for="ex in (tm('sfx.help.examples') as { kind: SfxKind; text: string }[])" :key="ex.text">
+              <button type="button" class="w-full rounded-lg border border-border/60 bg-panel-2/50 px-3 py-2 text-left text-xs leading-relaxed hover:border-accent1/50" @click="applyExample(ex)">
+                <span class="mr-1.5 rounded border border-border px-1 text-[10px] text-text-dim">{{ t(`sfx.kinds.${ex.kind}`) }}</span>{{ ex.text }}
+              </button>
+            </li>
+          </ul>
+        </section>
+      </div>
+    </HelpModal>
+  </section>
+</template>

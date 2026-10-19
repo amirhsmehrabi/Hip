@@ -29,7 +29,7 @@ const SECTIONS = [
   { key: 'editor', to: '/editor', icon: TimelineIcon, title: '' },
 ] as const
 /** The detail sections, in the order a track travels: made, trained for, split, mixed, arranged, kept. */
-const DETAILS = ['ace', 'yue', 'sa3', 'lora', 'stems', 'editor', 'arranger', 'library'] as const
+const DETAILS = ['ace', 'yue', 'sa3', 'lora', 'stems', 'editor', 'arranger', 'sfx', 'library'] as const
 const LIGHTS = [
   { key: 'stopped', cls: 'border border-text-dim/70' },
   { key: 'starting', cls: 'bg-status-queued animate-pulse' },
