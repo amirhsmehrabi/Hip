@@ -595,11 +595,18 @@ export default {
         continue: 'Continue',
       },
       modeHints: {
-        cover: 'A new version in the style you describe. The slider sets how much of the original stays: low keeps the rhythm and melody loosely, high keeps nearly everything.',
+        cover: 'A new version in the style you describe. The slider sets how much of the original stays, and the original\'s sound outlives its notes: above 0.5 the words barely matter, so to remake a track keep it at 0.3 or below and describe the result in full.',
         repaint: 'Redoes only the range below; the rest of the track is kept as it is and the model listens to both sides of the range.',
         continue: 'Carries the track on past its end, following what it hears; the result is the whole track plus the extension.',
       },
       closeness: 'Closeness to the original: {v}',
+      closenessLow: 'remake by the words',
+      closenessHigh: 'the same track',
+      closenessBands: {
+        remake: 'Remake: the words lead, the original leaves its groove and shape.',
+        timbre: 'Change the instrument or the style: the notes and the rhythm stay, the sound shifts.',
+        variation: 'Variation: nearly the same audio; the description has little effect here.',
+      },
       lengthMode: 'Length',
       lengthSource: 'Same as the track',
       lengthCustom: 'My own',
@@ -618,7 +625,7 @@ export default {
       decodeError: 'This file cannot be read as audio.',
       help: {
         title: 'Working from a track',
-        text: 'Attach a file or pick a library track. Cover remakes it in the style you describe (audio-to-audio); Repaint redoes a range while keeping the rest; Continue adds seconds after the end. Describe the music as usual: the words steer the new material, the audio steers everything else.',
+        text: 'Attach a file or pick a library track. Cover remakes it in the style you describe (audio-to-audio); Repaint redoes a range while keeping the rest; Continue adds seconds after the end. Describe the music as usual: the words steer the new material, the audio steers everything else. A cover keeps the original\'s sound longer than its notes: a drums-only stem stays percussive unless the closeness is 0.3 or lower, and the full mix (or the melodic stem) is a better source for a new arrangement.',
       },
     },
     help: {
@@ -700,7 +707,7 @@ export default {
     closeness: 'Closeness: {v}%',
     closenessLoose: 'only the feel',
     closenessClose: 'almost the same',
-    closenessHint: 'Low: the model takes only the groove and the colour. High: nearly the same audio, re-made as the described sound.',
+    closenessHint: 'Up to 0.3: the words lead, the tracks leave their groove. Around 0.5: the same notes and rhythm in a new sound. Above: nearly the tracks themselves.',
     byTracks: 'by the tracks',
     help: {
       title: 'Describing a sound',
