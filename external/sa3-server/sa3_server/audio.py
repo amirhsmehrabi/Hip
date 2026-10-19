@@ -48,3 +48,16 @@ def write_wav(path: Path, audio: torch.Tensor, sample_rate: int) -> float:
 def trim_to_seconds(audio: torch.Tensor, seconds: float, sample_rate: int) -> torch.Tensor:
     n = int(round(seconds * sample_rate))
     return audio[..., :n] if n > 0 else audio
+
+
+def trim_leading_silence(audio: torch.Tensor, sample_rate: int, threshold_db: float = -60.0, keep_ms: float = 5.0) -> torch.Tensor:
+    """Drops the quiet run before a one-shot's attack, keeping a few ms of lead-in so the attack is not clipped."""
+    if audio.numel() == 0:
+        return audio
+    level = audio.abs().amax(dim=0) if audio.dim() == 2 else audio.abs()  # [N]
+    threshold = 10 ** (threshold_db / 20)
+    loud = torch.nonzero(level > threshold)
+    if loud.numel() == 0:
+        return audio
+    start = max(0, int(loud[0]) - int(sample_rate * keep_ms / 1000))
+    return audio[..., start:]

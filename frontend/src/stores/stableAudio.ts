@@ -52,9 +52,8 @@ export interface Sa3Reference {
   closeness: number
   /** cover: the result's length in seconds, or null for the source's own. */
   customSec: number | null
-  /** repaint: the range to redo, seconds into the reference. */
-  maskStart: number
-  maskEnd: number
+  /** repaint: the ranges to redo, seconds into the reference. */
+  ranges: { start: number; end: number }[]
   /** continue: how many seconds to add after the end. */
   extendSec: number
 }
@@ -70,6 +69,11 @@ export interface Sa3GenerateParams {
   seed: number
   count: number
   reference?: Sa3Reference | null
+  /** One text per variant (as many as `count`); `prompt` then only names the run. */
+  prompts?: string[] | null
+  /** What the user typed, before the service tags were added. */
+  caption?: string
+  autoTags?: boolean
 }
 
 export const useStableAudioStore = defineStore('stableAudio', {
@@ -146,8 +150,9 @@ export const useStableAudioStore = defineStore('stableAudio', {
       const ref = p.reference ?? null
       // The reference decides the task and the length: a cover keeps the source length, a repaint too,
       // a continuation is the source plus the extension (the mask covers the part past the source).
+      const prompts = p.prompts && p.prompts.length === p.count ? p.prompts : null
       const req: api.Sa3JobRequest = {
-        task: 'text', model: p.model, prompt: p.prompt, negative_prompt: p.negativePrompt || undefined,
+        task: 'text', model: p.model, prompt: prompts ?? p.prompt, negative_prompt: p.negativePrompt || undefined,
         duration: p.duration, steps: p.steps, cfg_scale: p.cfgScale, seed: p.seed, batch_size: p.count,
       }
       if (ref?.mode === 'cover') {
@@ -156,8 +161,8 @@ export const useStableAudioStore = defineStore('stableAudio', {
         req.duration = ref.customSec ?? ref.durationSec
       } else if (ref?.mode === 'repaint') {
         req.task = 'inpaint'
-        req.mask_start = [ref.maskStart]
-        req.mask_end = [ref.maskEnd]
+        req.mask_start = ref.ranges.map((r) => r.start)
+        req.mask_end = ref.ranges.map((r) => r.end)
         req.duration = ref.durationSec
       } else if (ref?.mode === 'continue') {
         req.task = 'inpaint'
@@ -166,13 +171,14 @@ export const useStableAudioStore = defineStore('stableAudio', {
         req.duration = ref.durationSec + ref.extendSec
       }
       const params = {
-        task: req.task, kind: p.kind, model: p.model, prompt: p.prompt, negative_prompt: p.negativePrompt,
+        task: req.task, kind: p.kind, model: p.model, prompt: p.prompt, prompts: prompts ?? undefined, caption: p.caption,
+        auto_tags: p.autoTags, negative_prompt: p.negativePrompt,
         duration: req.duration, steps: p.steps, cfg_scale: p.cfgScale, seed: p.seed, batch_size: p.count,
         ...(ref ? {
           ref_mode: ref.mode, ref_name: ref.name, ref_track_id: ref.trackId, ref_duration: ref.durationSec,
           closeness: ref.mode === 'cover' ? ref.closeness : undefined,
           custom_sec: ref.mode === 'cover' ? ref.customSec : undefined,
-          mask: ref.mode === 'repaint' ? [ref.maskStart, ref.maskEnd] : undefined,
+          mask: ref.mode === 'repaint' ? ref.ranges.map((r) => [r.start, r.end]) : undefined,
           extend_sec: ref.mode === 'continue' ? ref.extendSec : undefined,
         } : {}),
       }
@@ -180,8 +186,9 @@ export const useStableAudioStore = defineStore('stableAudio', {
       for (let i = 0; i < p.count; i++) {
         const id = `g_${created}_${i}`
         ids.push(id)
+        const text = prompts ? prompts[i] : p.prompt
         this.jobs.unshift({
-          id, status: 'queued', createdAt: created, title: p.prompt, prompt: p.prompt, kind: p.kind, model: p.model,
+          id, status: 'queued', createdAt: created, title: text, prompt: text, kind: p.kind, model: p.model,
           seed: p.seed >= 0 ? p.seed : null, durationSec: null, wallSec: null, progress: 0, finalized: false, params, index: i,
         })
       }
@@ -272,7 +279,7 @@ export const useStableAudioStore = defineStore('stableAudio', {
             seed: job.seed ?? undefined,
             duration_ms: job.durationSec != null ? Math.round(job.durationSec * 1000) : undefined,
             wall_ms: job.wallSec != null ? Math.round(job.wallSec * 1000) : undefined,
-            params: { ...job.params, seed: job.seed, index: job.index },
+            params: { ...job.params, prompt: job.prompt, seed: job.seed, index: job.index },
           },
           blob,
           'wav',

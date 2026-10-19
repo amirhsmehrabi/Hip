@@ -71,6 +71,7 @@ def build_app(engine: Engine, preload: str | None) -> FastAPI:
                 "max_seconds": spec["max_seconds"],
                 "kinds": spec["kinds"],
                 "tasks": list(TASKS),
+                "base": bool(spec.get("base")),
                 "installed": found[name] is not None,
                 "loaded": name in loaded,
                 "loading": engine.loading() == name,
@@ -93,8 +94,8 @@ def build_app(engine: Engine, preload: str | None) -> FastAPI:
     async def create_job(
         task: Annotated[str, Form()] = "text",
         model: Annotated[str, Form()] = "medium",
-        prompt: Annotated[str, Form()] = "",
-        negative_prompt: Annotated[str, Form()] = "",
+        prompt: Annotated[list[str], Form()] = [],
+        negative_prompt: Annotated[list[str], Form()] = [],
         duration: Annotated[float | None, Form()] = None,
         steps: Annotated[int, Form()] = 8,
         cfg_scale: Annotated[float, Form()] = 1.0,
@@ -104,8 +105,16 @@ def build_app(engine: Engine, preload: str | None) -> FastAPI:
         mask_start: Annotated[list[float], Form()] = [],
         mask_end: Annotated[list[float], Form()] = [],
         chunked_decode: Annotated[str | None, Form()] = None,
+        trim_silence: Annotated[str | None, Form()] = None,
         audio: Annotated[UploadFile | None, File()] = None,
     ) -> dict[str, Any]:
+        # One prompt for the batch, or one per variant.
+        if len(prompt) not in (0, 1, batch_size):
+            raise HTTPException(400, f"prompt must be one text or {batch_size} (one per variant)")
+        if len(negative_prompt) not in (0, 1, batch_size):
+            raise HTTPException(400, f"negative_prompt must be one text or {batch_size}")
+        prompt_value: str | list[str] = prompt[0] if len(prompt) == 1 else (prompt or "")
+        negative_value: str | list[str] = negative_prompt[0] if len(negative_prompt) == 1 else (negative_prompt or "")
         if task not in TASKS:
             raise HTTPException(400, f"task must be one of {TASKS}")
         if model not in MODEL_SPECS:
@@ -146,8 +155,9 @@ def build_app(engine: Engine, preload: str | None) -> FastAPI:
         request = {
             "task": task,
             "model": model,
-            "prompt": prompt,
-            "negative_prompt": negative_prompt,
+            "prompt": prompt_value,
+            "negative_prompt": negative_value,
+            "trim_silence": (trim_silence or "").strip().lower() in ("1", "true", "yes"),
             "duration": float(duration),
             "steps": steps,
             "cfg_scale": cfg_scale,

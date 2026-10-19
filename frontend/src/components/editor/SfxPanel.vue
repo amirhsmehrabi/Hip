@@ -6,6 +6,8 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { decodeStem } from '../../audio/mixerEngine'
 import type { Clip } from '../../audio/timelineTypes'
+import * as tracksApi from '../../api/tracks'
+import { audioBufferToWavFile } from '../../utils/aiParts'
 import { claimPlayback, fetchAndComputePeaks, releasePlaybackIfCurrent } from '../../composables/audioPlayback'
 import { useEditorStore } from '../../stores/editor'
 import { useFeaturesStore } from '../../stores/features'
@@ -43,6 +45,32 @@ const loopBars = ref(2)
 const textureSec = ref(15)
 const count = ref(2)
 const target = ref<'new' | 'selected'>('new')
+/** Loop: crossfade the tail into the head when placing, so it repeats without a click. */
+const seamless = ref(false)
+/** One-shot: the server drops the quiet run before the attack. */
+const trimSilence = ref(true)
+const SEAM_SEC = 0.03
+
+/**
+ * Equal-power crossfade of the last SEAM_SEC into the first: the clip's end then matches its start, so a
+ * loop of it joins cleanly. Returns a new buffer shorter by the seam (the overlapped tail is folded in).
+ */
+function seamLoop(buf: AudioBuffer): AudioBuffer {
+  const n = Math.min(Math.floor(SEAM_SEC * buf.sampleRate), Math.floor(buf.length / 4))
+  if (n < 8) return buf
+  const out = new AudioBuffer({ numberOfChannels: buf.numberOfChannels, length: buf.length - n, sampleRate: buf.sampleRate })
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const src = buf.getChannelData(c)
+    const dst = out.getChannelData(c)
+    dst.set(src.subarray(0, out.length))
+    for (let i = 0; i < n; i++) {
+      const w = (i / n) * Math.PI / 2
+      // the head fades in while the tail fades out, folded onto the head
+      dst[i] = src[i] * Math.sin(w) + src[out.length + i] * Math.cos(w)
+    }
+  }
+  return out
+}
 const model = ref<Sa3ModelId>('small-sfx')
 const preparing = ref(false)
 const formError = ref<string | null>(null)
@@ -99,7 +127,7 @@ async function generate() {
   }
   preparing.value = true
   try {
-    await sfxStore.submit({ kind: kind.value, caption, model: model.value, duration: duration.value, bpm: bpm.value, bars: loopBars.value, count: count.value }, store.session)
+    await sfxStore.submit({ kind: kind.value, caption, model: model.value, duration: duration.value, bpm: bpm.value, bars: loopBars.value, count: count.value, trimSilence: kind.value === 'oneshot' && trimSilence.value }, store.session)
   } catch (e) {
     formError.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -149,17 +177,30 @@ async function insert(job: SfxJob, v: SfxVariant) {
   if (job.session !== store.session) return
   inserting.value = v.url
   try {
+    const r = job.request
+    let key = v.url
     let buf = props.buffers.get(v.url)
     if (!buf) {
       buf = await decodeStem(v.url)
       props.buffers.set(v.url, buf)
     }
-    const r = job.request
+    // A seamed loop is new audio: it goes into the library as its own file, so the project can reload it.
+    if (r.kind === 'loop' && seamless.value) {
+      const seamed = seamLoop(buf)
+      const saved = await tracksApi.saveTrack(
+        { model: 'editor', title: `${v.title} ∞`, lyrics: '', duration_ms: Math.round(seamed.duration * 1000), params: { sfx: true, kind: 'loop', caption: r.caption, engine: 'sa3', model: r.model, bpm: r.bpm, bars: r.bars, seamed: true } },
+        audioBufferToWavFile(seamed, 'loop.wav'),
+        'wav',
+      )
+      key = saved.audio_url
+      buf = seamed
+      props.buffers.set(key, buf)
+    }
     const loop = store.project.loopRegion?.enabled ? store.project.loopRegion : null
     const clip: Clip = {
       id: crypto.randomUUID(),
       type: 'audio',
-      sourceUrl: v.url,
+      sourceUrl: key,
       sourceLabel: v.title,
       timelineStart: loop ? loop.start : store.playheadSec,
       trimStart: 0,
@@ -258,13 +299,23 @@ function statusKey(job: SfxJob): string {
       </div>
 
       <div class="flex min-w-[12rem] flex-1 flex-col gap-2.5">
-        <label v-if="kind === 'oneshot'" class="flex flex-col gap-1">
-          <span class="text-[13px] font-medium text-text">{{ t('sfx.length', { v: fmtSec(oneshotSec) }) }}</span>
-          <input v-model.number="oneshotSec" type="range" min="0.5" max="5" step="0.5" class="w-full accent-accent1" />
-        </label>
+        <div v-if="kind === 'oneshot'" class="flex flex-col gap-1">
+          <label class="flex flex-col gap-1">
+            <span class="text-[13px] font-medium text-text">{{ t('sfx.length', { v: fmtSec(oneshotSec) }) }}</span>
+            <input v-model.number="oneshotSec" type="range" min="0.5" max="5" step="0.5" class="w-full accent-accent1" />
+          </label>
+          <label class="flex items-center gap-1.5 text-xs text-text" :title="t('sfx.trimSilenceHint')">
+            <input v-model="trimSilence" type="checkbox" class="rounded border-border" />
+            {{ t('sfx.trimSilence') }}
+          </label>
+        </div>
         <div v-else-if="kind === 'loop'" class="flex flex-col gap-1">
           <span class="text-[13px] font-medium text-text">{{ t('sfx.bars', { v: fmtSec(duration) }) }}</span>
           <ChipGroup v-model="loopBars" small :options="barOptions" />
+          <label class="flex items-center gap-1.5 text-xs text-text" :title="t('sfx.seamlessHint')">
+            <input v-model="seamless" type="checkbox" class="rounded border-border" />
+            {{ t('sfx.seamless') }}
+          </label>
           <span class="text-[11px] text-text-dim">{{ t('sfx.loopCaveat', { bpm }) }}</span>
         </div>
         <label v-else class="flex flex-col gap-1">
