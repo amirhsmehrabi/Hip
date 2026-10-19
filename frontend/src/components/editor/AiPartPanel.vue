@@ -11,6 +11,7 @@ import { useEditorStore } from '../../stores/editor'
 import type { HeldClip } from '../../stores/editor'
 import { useOrchestratorStore } from '../../stores/orchestrator'
 import { useStableAudioStore } from '../../stores/stableAudio'
+import { shortLaneNames } from '../../utils/laneNames'
 import { TRACK_COLORS } from '../../utils/trackColors'
 import {
   AI_MODE_TASK, AI_MODES, AI_TRACK_COLOR, AI_TRACKS, COPY_THRESHOLD, ENGINE_MAX_CONTEXT_SEC, ENGINE_MODEL_ID, ENGINE_MODES,
@@ -226,6 +227,11 @@ const pendingVariantLanes = computed(() => new Set(
   jobs.value.filter((j) => j.kept == null).flatMap((j) => j.variants.map((v) => v.laneId).filter((id): id is string => !!id)),
 ))
 const candidateLanes = computed(() => store.project.lanes.filter((l) => l.clips.length > 0 && !pendingVariantLanes.value.has(l.id)))
+/** Chip labels: stems of one track differ only after the colon, so the shared start is dropped. */
+const laneLabels = computed(() => {
+  const short = shortLaneNames(candidateLanes.value.map((l) => l.name))
+  return Object.fromEntries(candidateLanes.value.map((l, i) => [l.id, short[i]]))
+})
 const listenIds = ref<string[]>([])
 const knownLanes = new Set<string>()
 let knownSession = -1
@@ -623,7 +629,7 @@ function statusText(job: AiPartJob): string {
               :style="{ borderColor: laneColor(lane.colorId), backgroundColor: listenIds.includes(lane.id) ? laneColor(lane.colorId) : 'transparent' }"
               aria-hidden="true"
             ></span>
-            <span class="max-w-[10rem] truncate">{{ lane.name }}</span>
+            <span class="max-w-[10rem] truncate" :title="lane.name">{{ laneLabels[lane.id] }}</span>
           </label>
         </div>
         <p v-if="candidateLanes.length" class="text-[11px] text-text-dim">{{ t(`aiPart.sourceHint.${mode}`) }}</p>
