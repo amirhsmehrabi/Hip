@@ -7,7 +7,8 @@ import { useI18n } from 'vue-i18n'
 import { decodeStem } from '../../audio/mixerEngine'
 import type { Clip } from '../../audio/timelineTypes'
 import * as tracksApi from '../../api/tracks'
-import { audioBufferToWavFile } from '../../utils/aiParts'
+import { audioBufferToWavFile, renderContext } from '../../utils/aiParts'
+import { TRACK_COLORS } from '../../utils/trackColors'
 import { claimPlayback, fetchAndComputePeaks, releasePlaybackIfCurrent } from '../../composables/audioPlayback'
 import { useEditorStore } from '../../stores/editor'
 import { useFeaturesStore } from '../../stores/features'
@@ -90,6 +91,51 @@ const duration = computed(() => (kind.value === 'loop' ? loopBars.value * barSec
 function fmtSec(s: number): string {
   return s < 10 ? `${s.toFixed(1)} ${t('common.secondsUnit')}` : `${Math.round(s)} ${t('common.secondsUnit')}`
 }
+function fmtPos(sec: number): string {
+  const m = Math.floor(sec / 60)
+  const s = sec % 60
+  return `${m}:${s < 10 ? '0' : ''}${s.toFixed(1)}`
+}
+
+// ---- Listening to the timeline ----
+// The ticked lanes, mixed over a span as long as the sample (from the loop start, else the playhead),
+// go to the model as audio-to-audio: the sample then follows their rhythm and colour, as close as asked.
+const listen = ref(false)
+const closeness = ref(0.5)
+const candidateLanes = computed(() => store.project.lanes.filter((l) => l.clips.some((c) => c.type !== 'midi' && c.sourceUrl)))
+const listenIds = ref<string[]>([])
+const knownLanes = new Set<string>()
+let knownSession = -1
+watch([() => store.session, candidateLanes], ([session, lanes]) => {
+  if (session !== knownSession) {
+    knownSession = session
+    knownLanes.clear()
+    listenIds.value = []
+  }
+  for (const l of lanes) {
+    if (knownLanes.has(l.id)) continue
+    knownLanes.add(l.id)
+    if (!l.settings.muted) listenIds.value.push(l.id)
+  }
+  listenIds.value = listenIds.value.filter((id) => lanes.some((l) => l.id === id))
+}, { immediate: true })
+function laneColor(colorId?: string): string {
+  return TRACK_COLORS.find((c) => c.id === colorId)?.baseHex ?? '#a855f7'
+}
+const loopRegion = computed(() => (store.project.loopRegion?.enabled ? store.project.loopRegion : null))
+/** The timeline span the model hears, or why there is none. */
+const listenSpan = computed<{ start: number; end: number } | { error: string }>(() => {
+  if (candidateLanes.value.length === 0) return { error: t('sfx.listenEmpty') }
+  const start = loopRegion.value ? loopRegion.value.start : store.playheadSec
+  const end = Math.min(start + duration.value, store.totalDuration)
+  if (end - start < 0.5) return { error: t('sfx.listenNothing') }
+  return { start, end }
+})
+const listenError = computed(() => {
+  if (!listen.value) return null
+  if ('error' in listenSpan.value) return listenSpan.value.error
+  return listenIds.value.length ? null : t('sfx.listenNeedLanes')
+})
 
 // ---- Engine ----
 const sa3Status = computed(() => orchestrator.statuses.stable_audio?.status ?? 'stopped')
@@ -117,7 +163,7 @@ async function startEngine() {
 }
 
 // ---- Generate ----
-const canGenerate = computed(() => sa3Running.value && !preparing.value && !!captions.value[kind.value].trim() && modelChoices.value.length > 0)
+const canGenerate = computed(() => sa3Running.value && !preparing.value && !!captions.value[kind.value].trim() && modelChoices.value.length > 0 && !listenError.value)
 async function generate() {
   formError.value = null
   const caption = captions.value[kind.value].trim()
@@ -125,9 +171,23 @@ async function generate() {
     formError.value = t('sfx.needCaption')
     return
   }
+  if (listenError.value) {
+    formError.value = listenError.value
+    return
+  }
   preparing.value = true
   try {
-    await sfxStore.submit({ kind: kind.value, caption, model: model.value, duration: duration.value, bpm: bpm.value, bars: loopBars.value, count: count.value, trimSilence: kind.value === 'oneshot' && trimSilence.value }, store.session)
+    let reference = null
+    let audio: File | null = null
+    if (listen.value && !('error' in listenSpan.value)) {
+      const { start, end } = listenSpan.value
+      reference = { laneIds: [...listenIds.value], start, end, closeness: closeness.value }
+      audio = audioBufferToWavFile(renderContext(store.project, props.buffers, listenIds.value, start, end), 'reference.wav')
+    }
+    await sfxStore.submit({
+      kind: kind.value, caption, model: model.value, duration: duration.value, bpm: bpm.value, bars: loopBars.value, count: count.value,
+      trimSilence: kind.value === 'oneshot' && trimSilence.value, reference,
+    }, store.session, audio)
   } catch (e) {
     formError.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -338,6 +398,43 @@ function statusKey(job: SfxJob): string {
         </div>
         <span class="text-[11px] text-text-dim">{{ t('sfx.targetHint') }}</span>
       </div>
+
+      <!-- What the model hears from the timeline (audio-to-audio) -->
+      <div class="flex min-w-[14rem] flex-1 flex-col gap-1.5">
+        <label class="flex items-center gap-1.5 text-[13px] font-medium text-text" :title="t('sfx.listenHint')">
+          <input v-model="listen" type="checkbox" class="rounded border-border" :disabled="candidateLanes.length === 0" />
+          {{ t('sfx.listen') }}
+        </label>
+        <p v-if="candidateLanes.length === 0" class="text-[11px] text-text-dim">{{ t('sfx.listenEmpty') }}</p>
+        <template v-else-if="listen">
+          <!-- lanes as toggles in their own colours: a filled dot is heard, a hollow one is not -->
+          <div class="flex max-h-20 flex-wrap gap-1.5 overflow-y-auto" role="group" :aria-label="t('sfx.listen')">
+            <label
+              v-for="lane in candidateLanes"
+              :key="lane.id"
+              class="flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent1"
+              :class="listenIds.includes(lane.id) ? 'border-text-dim/50 bg-panel-2 text-text' : 'border-border/60 text-text-dim hover:text-text'"
+            >
+              <input v-model="listenIds" type="checkbox" :value="lane.id" class="sr-only" />
+              <span
+                class="h-2 w-2 shrink-0 rounded-full border"
+                :style="{ borderColor: laneColor(lane.colorId), backgroundColor: listenIds.includes(lane.id) ? laneColor(lane.colorId) : 'transparent' }"
+                aria-hidden="true"
+              ></span>
+              <span class="max-w-[10rem] truncate">{{ lane.name }}</span>
+            </label>
+          </div>
+          <p class="text-[11px]" :class="'error' in listenSpan ? 'text-status-failed' : 'text-text-dim'">
+            {{ 'error' in listenSpan ? listenSpan.error : t('sfx.listenRange', { range: `${fmtPos(listenSpan.start)}–${fmtPos(listenSpan.end)}` }) }}
+          </p>
+          <label class="flex flex-col gap-1" :title="t('sfx.closenessHint')">
+            <span class="text-xs text-text">{{ t('sfx.closeness', { v: Math.round(closeness * 100) }) }}</span>
+            <input v-model.number="closeness" type="range" min="0.1" max="0.9" step="0.05" class="w-full accent-accent1" />
+            <span class="flex justify-between text-[10px] text-text-dim"><span>{{ t('sfx.closenessLoose') }}</span><span>{{ t('sfx.closenessClose') }}</span></span>
+          </label>
+        </template>
+        <p v-else class="text-[11px] text-text-dim">{{ t('sfx.listenHint') }}</p>
+      </div>
     </div>
 
     <!-- Results, newest first: audition, then place -->
@@ -346,6 +443,7 @@ function statusKey(job: SfxJob): string {
         <div class="flex items-center gap-2">
           <span class="h-2 w-2 shrink-0 rounded-full" :class="job.request.kind === 'loop' ? 'bg-cyan-400' : 'bg-slate-400'" aria-hidden="true"></span>
           <p class="min-w-0 flex-1 truncate font-medium text-text" :title="job.request.caption">{{ t(`sfx.kinds.${job.request.kind}`) }} · {{ job.request.caption }}</p>
+          <span v-if="job.request.reference" class="shrink-0 rounded border border-accent1/40 px-1 text-[10px] text-accent1" :title="t('sfx.listenRange', { range: `${fmtPos(job.request.reference.start)}–${fmtPos(job.request.reference.end)}` })">{{ t('sfx.byTracks') }}</span>
           <span class="shrink-0 text-text-dim">{{ fmtSec(job.request.duration) }}</span>
           <button v-if="job.status === 'queued' || job.status === 'running'" type="button" class="shrink-0 text-text-dim hover:text-status-failed" @click="sfxStore.cancel(job.id)">{{ t('aiPart.cancel') }}</button>
           <button v-else type="button" class="shrink-0 text-text-dim hover:text-text" :title="t('sfx.dismissTitle')" @click="sfxStore.removeJob(job.id)">{{ t('aiPart.dismiss') }}</button>
