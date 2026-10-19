@@ -24,6 +24,17 @@ export interface SfxRequest {
   count: number
   /** one-shot: the server drops the leading silence. */
   trimSilence?: boolean
+  /** The timeline audio the model hears (audio-to-audio): the result keeps its rhythm and colour. */
+  reference?: SfxReference | null
+}
+
+export interface SfxReference {
+  laneIds: string[]
+  /** Timeline span that was mixed, seconds. */
+  start: number
+  end: number
+  /** 0 = only the feel, 1 = nearly the same audio. */
+  closeness: number
 }
 
 export interface SfxVariant {
@@ -69,7 +80,8 @@ export const useSfxStore = defineStore('sfx', {
     _pollTimer: null as ReturnType<typeof setTimeout> | null,
   }),
   actions: {
-    async submit(request: SfxRequest, session: number): Promise<SfxJob> {
+    /** `audio` is the mixed reference span when `request.reference` is set: the job then runs audio-to-audio. */
+    async submit(request: SfxRequest, session: number, audio: File | null = null): Promise<SfxJob> {
       this.jobs.unshift({
         id: crypto.randomUUID(),
         taskId: null,
@@ -83,10 +95,13 @@ export const useSfxStore = defineStore('sfx', {
       })
       const job = this.jobs[0] // the reactive proxy, so later writes re-render
       try {
+        const ref = audio ? request.reference : null
         const res = await sa3Api.submitJob({
-          task: 'text', model: request.model, prompt: sfxPrompt(request), duration: request.duration,
+          task: ref ? 'a2a' : 'text', model: request.model, prompt: sfxPrompt(request), duration: request.duration,
           steps: 8, cfg_scale: 1, seed: -1, batch_size: request.count, trim_silence: request.trimSilence || undefined,
-        })
+          // Stable Audio's noise level is the opposite of closeness.
+          init_noise_level: ref ? Math.min(1, Math.max(0, 1 - ref.closeness)) : undefined,
+        }, ref ? audio : null)
         job.taskId = res.job_id
         this._ensurePolling()
       } catch (e) {
@@ -148,6 +163,7 @@ export const useSfxStore = defineStore('sfx', {
               params: {
                 sfx: true, kind: r.kind, caption: r.caption, prompt: sfxPrompt(r), engine: 'sa3', model: r.model,
                 bpm: r.bpm, bars: r.kind === 'loop' ? r.bars : undefined, duration: r.duration, index: i,
+                ...(r.reference ? { ref_lanes: r.reference.laneIds, ref_range: [r.reference.start, r.reference.end], closeness: r.reference.closeness } : {}),
               },
             },
             await resp.blob(),
