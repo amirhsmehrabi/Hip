@@ -3,7 +3,7 @@
 import { apiFetch, apiJson } from './http'
 
 export type Sa3Task = 'text' | 'a2a' | 'inpaint'
-export type Sa3ModelId = 'medium' | 'small-music' | 'small-sfx'
+export type Sa3ModelId = 'medium' | 'small-music' | 'small-sfx' | 'medium-base' | 'small-music-base' | 'small-sfx-base'
 export type Sa3JobStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled'
 
 export interface Sa3Model {
@@ -14,6 +14,8 @@ export interface Sa3Model {
   max_seconds: number
   kinds: ('music' | 'sfx')[]
   tasks: Sa3Task[]
+  /** A pre-training checkpoint: wants ~50 steps and CFG, honours the negative prompt; the start of LoRA training. */
+  base: boolean
   installed: boolean
   loaded: boolean
   loading: boolean
@@ -32,8 +34,9 @@ export interface Sa3Health {
 export interface Sa3JobRequest {
   task: Sa3Task
   model: Sa3ModelId
-  prompt: string
-  negative_prompt?: string
+  /** One text, or one per variant (then as many as batch_size). */
+  prompt: string | string[]
+  negative_prompt?: string | string[]
   /** Seconds. For a2a the server uses the audio's own length; for inpaint it is the total length. */
   duration?: number
   steps?: number
@@ -47,6 +50,8 @@ export interface Sa3JobRequest {
   mask_start?: number[]
   mask_end?: number[]
   chunked_decode?: boolean
+  /** text only: drop leading silence below -60 dBFS (one-shots). */
+  trim_silence?: boolean
 }
 
 export interface Sa3JobCreated {

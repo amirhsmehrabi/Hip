@@ -22,6 +22,8 @@ export interface SfxRequest {
   bpm: number
   bars: number
   count: number
+  /** one-shot: the server drops the leading silence. */
+  trimSilence?: boolean
 }
 
 export interface SfxVariant {
@@ -83,7 +85,7 @@ export const useSfxStore = defineStore('sfx', {
       try {
         const res = await sa3Api.submitJob({
           task: 'text', model: request.model, prompt: sfxPrompt(request), duration: request.duration,
-          steps: 8, cfg_scale: 1, seed: -1, batch_size: request.count,
+          steps: 8, cfg_scale: 1, seed: -1, batch_size: request.count, trim_silence: request.trimSilence || undefined,
         })
         job.taskId = res.job_id
         this._ensurePolling()

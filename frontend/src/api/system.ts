@@ -28,7 +28,7 @@ export interface Features {
   stable_audio: boolean
   /** The environment alone: the weights are gated and fetched by the user. */
   stable_audio_env: boolean
-  stable_audio_models: ('medium' | 'small-music' | 'small-sfx')[]
+  stable_audio_models: ('medium' | 'small-music' | 'small-sfx' | 'medium-base' | 'small-music-base' | 'small-sfx-base')[]
 }
 
 export function getFeatures(): Promise<Features> {

@@ -23,6 +23,37 @@ const count = ref(1)
 const seed = ref(-1)
 const steps = ref(8)
 const cfgScale = ref(1)
+
+// ---- Service tags: the model was trained with AudioSparx / Freesound metadata, so a TrackType prefix helps ----
+const AUTO_TAGS_KEY = 'remiqora_sa3_auto_tags'
+const autoTags = ref(localStorage.getItem(AUTO_TAGS_KEY) !== 'off')
+watch(autoTags, (v) => {
+  try {
+    localStorage.setItem(AUTO_TAGS_KEY, v ? 'on' : 'off')
+  } catch {
+    // not remembered
+  }
+})
+function withTags(text: string): string {
+  const clean = text.trim()
+  if (!autoTags.value || /TrackType\s*:/i.test(clean)) return clean
+  return (kind.value === 'sfx' ? 'TrackType: SFX. ' : 'TrackType: Music, VocalType: Instrumental. ') + clean
+}
+
+// ---- One description per variant: an A/B in one run ----
+const perVariant = ref(false)
+const variantPrompts = ref<string[]>(['', '', '', ''])
+
+// ---- Base checkpoints: ~50 steps and CFG; the user's own numbers win once touched ----
+const stepsTouched = ref(false)
+const cfgTouched = ref(false)
+watch(model, (id, prev) => {
+  const nowBase = id.endsWith('-base')
+  const wasBase = (prev ?? '').endsWith('-base')
+  if (nowBase === wasBase) return
+  if (!stepsTouched.value) steps.value = nowBase ? 50 : 8
+  if (!cfgTouched.value) cfgScale.value = nowBase ? 7 : 1
+})
 const submitting = ref(false)
 const formError = ref('')
 const helpOpen = ref<false | 'prompt' | 'ref'>(false)
@@ -39,8 +70,21 @@ const closeness = ref(0.5)
 /** A cover is as long as the source unless the user wants a length of their own. */
 const lengthMode = ref<'source' | 'custom'>('source')
 const customSec = ref(30)
-const maskStart = ref(0)
-const maskEnd = ref(10)
+/** The ranges a repaint redoes; several in one pass. */
+const ranges = ref<{ start: number; end: number }[]>([{ start: 0, end: 10 }])
+function addRange() {
+  const last = ranges.value[ranges.value.length - 1]
+  const start = Math.min(refDurationSec.value - 1, (last?.end ?? 0) + 4)
+  ranges.value.push({ start: Math.max(0, start), end: Math.min(refDurationSec.value, Math.max(0, start) + 8) })
+}
+function removeRange(i: number) {
+  if (ranges.value.length > 1) ranges.value.splice(i, 1)
+}
+const rangesValid = computed(() => {
+  const dur = refDurationSec.value + 0.05
+  const sorted = [...ranges.value].sort((a, b) => a.start - b.start)
+  return sorted.every((r, i) => r.start >= 0 && r.end <= dur && r.end - r.start >= 1 && (i === 0 || r.start >= sorted[i - 1].end))
+})
 const extendSec = ref(15)
 const pickerOpen = ref(false)
 const refModeOptions = computed(() => (['cover', 'repaint', 'continue'] as Sa3RefMode[]).map((m) => ({ value: m, label: t(`sa3Gen.ref.modes.${m}`) })))
@@ -72,8 +116,7 @@ async function setReference(blob: Blob, name: string, trackId: number | null) {
     refName.value = name
     refDurationSec.value = dur
     refTrackId.value = trackId
-    maskStart.value = 0
-    maskEnd.value = Math.min(10, Math.floor(dur))
+    ranges.value = [{ start: 0, end: Math.min(10, Math.floor(dur)) }]
   } catch {
     formError.value = t('sa3Gen.ref.decodeError')
   } finally {
@@ -104,7 +147,7 @@ const reference = computed<Sa3Reference | null>(() => (useRef.value && refFile.v
   ? {
       file: refFile.value, name: refName.value, durationSec: refDurationSec.value, trackId: refTrackId.value, mode: refMode.value,
       closeness: closeness.value, customSec: refMode.value === 'cover' && lengthMode.value === 'custom' ? customSec.value : null,
-      maskStart: maskStart.value, maskEnd: maskEnd.value, extendSec: extendSec.value,
+      ranges: ranges.value.map((r) => ({ ...r })), extendSec: extendSec.value,
     }
   : null))
 
@@ -159,8 +202,9 @@ function randomSeed() {
 async function submit() {
   formError.value = ''
   const text = prompt.value.trim()
-  if (!text) {
-    formError.value = t('sa3Gen.needPrompt')
+  const perVariantTexts = perVariant.value && count.value > 1 ? variantPrompts.value.slice(0, count.value).map((s) => s.trim()) : null
+  if (perVariantTexts ? perVariantTexts.some((s) => !s) : !text) {
+    formError.value = t(perVariantTexts ? 'sa3Gen.needPrompts' : 'sa3Gen.needPrompt')
     return
   }
   if (!selected.value?.available) {
@@ -172,8 +216,8 @@ async function submit() {
       formError.value = t('sa3Gen.ref.needRef')
       return
     }
-    if (refMode.value === 'repaint' && (maskStart.value < 0 || maskEnd.value > refDurationSec.value + 0.05 || maskEnd.value - maskStart.value < 1)) {
-      formError.value = t('sa3Gen.ref.badRange')
+    if (refMode.value === 'repaint' && !rangesValid.value) {
+      formError.value = t('sa3Gen.ref.badRanges')
       return
     }
     if (resultSeconds.value > maxSeconds.value) {
@@ -184,7 +228,12 @@ async function submit() {
   submitting.value = true
   try {
     await store.generate({
-      kind: kind.value, model: model.value, prompt: text, negativePrompt: negativePrompt.value.trim(),
+      kind: kind.value, model: model.value,
+      prompt: withTags(perVariantTexts ? perVariantTexts[0] : text),
+      prompts: perVariantTexts ? perVariantTexts.map(withTags) : null,
+      caption: perVariantTexts ? perVariantTexts.join(' | ') : text,
+      autoTags: autoTags.value,
+      negativePrompt: negativePrompt.value.trim(),
       duration: duration.value, steps: steps.value, cfgScale: cfgScale.value, seed: seed.value, count: count.value,
       reference: reference.value,
     })
@@ -216,7 +265,20 @@ function applyExample(text: string) {
 
       <div class="space-y-1.5">
         <label class="block text-sm font-medium text-text" for="sa3-prompt">{{ t('sa3Gen.promptLabel') }}</label>
+        <!-- one text for the run, or one per variant (an A/B in one go) -->
+        <template v-if="perVariant && count > 1">
+          <div v-for="i in count" :key="i" class="space-y-0.5">
+            <span class="text-[11px] text-text-dim">{{ t('sa3Gen.variantPrompt', { n: i }) }}</span>
+            <textarea
+              v-model="variantPrompts[i - 1]"
+              rows="2"
+              class="w-full resize-y rounded-lg border border-border bg-panel-2 px-3 py-2 text-sm text-text placeholder:text-text-dim/70 focus:border-accent1 focus:outline-none"
+              :placeholder="t(`sa3Gen.promptPlaceholder.${kind}`)"
+            ></textarea>
+          </div>
+        </template>
         <textarea
+          v-else
           id="sa3-prompt"
           v-model="prompt"
           rows="4"
@@ -224,6 +286,16 @@ function applyExample(text: string) {
           :placeholder="t(`sa3Gen.promptPlaceholder.${kind}`)"
         ></textarea>
         <p class="text-xs text-text-dim">{{ t('sa3Gen.promptHint') }}</p>
+        <div class="flex flex-wrap gap-x-4 gap-y-1 pt-0.5 text-xs">
+          <label class="flex items-center gap-1.5 text-text" :title="t('sa3Gen.autoTagsHint')">
+            <input v-model="autoTags" type="checkbox" class="rounded border-border" />
+            {{ t('sa3Gen.autoTags') }}
+          </label>
+          <label v-if="count > 1" class="flex items-center gap-1.5 text-text" :title="t('sa3Gen.perVariantHint')">
+            <input v-model="perVariant" type="checkbox" class="rounded border-border" />
+            {{ t('sa3Gen.perVariant') }}
+          </label>
+        </div>
       </div>
 
       <!-- A reference track: the length then comes from it, so the slider steps aside -->
@@ -267,15 +339,22 @@ function applyExample(text: string) {
               <p v-if="lengthMode === 'custom'" class="text-xs text-text-dim">{{ t('sa3Gen.ref.lengthCustomHint') }}</p>
             </div>
           </template>
-          <div v-else-if="refMode === 'repaint'" class="grid grid-cols-2 gap-2">
-            <label class="space-y-1">
-              <span class="block text-xs text-text-dim">{{ t('sa3Gen.ref.rangeFrom') }}</span>
-              <input v-model.number="maskStart" type="number" min="0" :max="refDurationSec" step="0.5" class="w-full rounded-lg border border-border bg-panel-2 px-2 py-1.5 text-sm text-text" />
-            </label>
-            <label class="space-y-1">
-              <span class="block text-xs text-text-dim">{{ t('sa3Gen.ref.rangeTo') }}</span>
-              <input v-model.number="maskEnd" type="number" min="0" :max="refDurationSec" step="0.5" class="w-full rounded-lg border border-border bg-panel-2 px-2 py-1.5 text-sm text-text" />
-            </label>
+          <div v-else-if="refMode === 'repaint'" class="space-y-2">
+            <span class="block text-xs text-text">{{ t('sa3Gen.ref.ranges') }}</span>
+            <!-- several ranges are redone in one pass; each is from/to seconds into the reference -->
+            <div v-for="(r, i) in ranges" :key="i" class="flex items-end gap-2">
+              <label class="flex-1 space-y-1">
+                <span class="block text-xs text-text-dim">{{ t('sa3Gen.ref.rangeFrom') }}</span>
+                <input v-model.number="r.start" type="number" min="0" :max="refDurationSec" step="0.5" class="w-full rounded-lg border border-border bg-panel-2 px-2 py-1.5 text-sm text-text" />
+              </label>
+              <label class="flex-1 space-y-1">
+                <span class="block text-xs text-text-dim">{{ t('sa3Gen.ref.rangeTo') }}</span>
+                <input v-model.number="r.end" type="number" min="0" :max="refDurationSec" step="0.5" class="w-full rounded-lg border border-border bg-panel-2 px-2 py-1.5 text-sm text-text" />
+              </label>
+              <button type="button" class="h-9 w-9 shrink-0 rounded-lg border border-border text-text-dim hover:text-status-failed disabled:opacity-40" :disabled="ranges.length === 1" :aria-label="t('sa3Gen.ref.removeRange')" :title="t('sa3Gen.ref.removeRange')" @click="removeRange(i)">✕</button>
+            </div>
+            <button type="button" class="text-xs text-accent1 hover:underline" @click="addRange">{{ t('sa3Gen.ref.addRange') }}</button>
+            <p v-if="!rangesValid" class="text-xs text-status-failed">{{ t('sa3Gen.ref.badRanges') }}</p>
           </div>
           <label v-else class="block space-y-1">
             <span class="text-xs text-text">{{ t('sa3Gen.ref.extend', { v: formatClockShort(extendSec) }) }}</span>
@@ -298,10 +377,11 @@ function applyExample(text: string) {
         <div class="space-y-1.5">
           <label class="block text-sm font-medium text-text" for="sa3-model">{{ t('sa3Gen.model') }}</label>
           <select id="sa3-model" v-model="model" class="w-full rounded-lg border border-border bg-panel-2 px-2.5 py-2 text-sm text-text">
-            <option v-for="m in modelOptions" :key="m.id" :value="m.id">{{ m.label }} · {{ m.params }}</option>
+            <option v-for="m in modelOptions" :key="m.id" :value="m.id">{{ m.base ? t('sa3Gen.baseLabel', { label: m.label.replace(/ Base$/, '') }) : m.label }} · {{ m.params }}</option>
             <option v-if="!modelOptions.length" value="medium" disabled>{{ t('sa3Gen.noModel') }}</option>
           </select>
-          <p v-if="selected && !selected.loaded" class="text-xs text-text-dim">{{ selected.loading ? t('sa3Gen.modelLoading') : t('sa3Gen.modelCold') }}</p>
+          <p v-if="base" class="text-xs text-text-dim">{{ t('sa3Gen.baseNote') }}</p>
+          <p v-else-if="selected && !selected.loaded" class="text-xs text-text-dim">{{ selected.loading ? t('sa3Gen.modelLoading') : t('sa3Gen.modelCold') }}</p>
         </div>
         <div class="space-y-1.5">
           <span class="block text-sm font-medium text-text">{{ t('sa3Gen.variants') }}</span>
@@ -322,17 +402,17 @@ function applyExample(text: string) {
             </div>
             <div class="space-y-1">
               <label class="block text-xs text-text-dim" for="sa3-steps">{{ t('sa3Gen.steps') }}</label>
-              <input id="sa3-steps" v-model.number="steps" type="number" min="1" max="200" class="w-full rounded-lg border border-border bg-panel-2 px-2 py-1.5 text-sm text-text" />
+              <input id="sa3-steps" v-model.number="steps" type="number" min="1" max="200" class="w-full rounded-lg border border-border bg-panel-2 px-2 py-1.5 text-sm text-text" @input="stepsTouched = true" />
             </div>
             <div class="space-y-1">
               <label class="block text-xs text-text-dim" for="sa3-cfg">{{ t('sa3Gen.cfg') }}</label>
-              <input id="sa3-cfg" v-model.number="cfgScale" type="number" min="0" max="25" step="0.5" class="w-full rounded-lg border border-border bg-panel-2 px-2 py-1.5 text-sm text-text" />
+              <input id="sa3-cfg" v-model.number="cfgScale" type="number" min="0" max="25" step="0.5" class="w-full rounded-lg border border-border bg-panel-2 px-2 py-1.5 text-sm text-text" @input="cfgTouched = true" />
             </div>
           </div>
           <p class="text-xs text-text-dim">{{ base ? t('sa3Gen.advancedHintBase') : t('sa3Gen.advancedHint') }}</p>
           <div class="space-y-1">
             <label class="block text-xs text-text-dim" for="sa3-negative">{{ t('sa3Gen.negative') }}</label>
-            <input id="sa3-negative" v-model="negativePrompt" type="text" class="w-full rounded-lg border border-border bg-panel-2 px-2 py-1.5 text-sm text-text" :placeholder="t('sa3Gen.negativePlaceholder')" />
+            <input id="sa3-negative" v-model="negativePrompt" type="text" class="w-full rounded-lg border border-border bg-panel-2 px-2 py-1.5 text-sm text-text disabled:opacity-50" :disabled="!base" :placeholder="t('sa3Gen.negativePlaceholder')" />
           </div>
         </div>
       </details>

@@ -13,7 +13,7 @@ from typing import Any
 import torch
 from huggingface_hub import try_to_load_from_cache
 
-from .audio import trim_to_seconds, write_wav
+from .audio import trim_leading_silence, trim_to_seconds, write_wav
 from .jobs import Job, JobCancelled
 
 log = logging.getLogger("sa3.engine")
@@ -44,6 +44,12 @@ MODEL_SPECS: dict[str, dict[str, Any]] = {
         "kinds": ["sfx"],
     },
 }
+# The pre-training checkpoints: the start of LoRA training, and the only ones where CFG and a negative
+# prompt do anything (about 50 steps, CFG around 7). Same limits as their post-trained twins.
+for _name, _spec in list(MODEL_SPECS.items()):
+    MODEL_SPECS[f"{_name}-base"] = {**_spec, "label": f"{_spec['label']} Base", "repo": f"{_spec['repo']}-base", "base": True}
+for _spec in MODEL_SPECS.values():
+    _spec.setdefault("base", False)
 TASKS = ("text", "a2a", "inpaint")
 
 
@@ -145,9 +151,19 @@ class Engine:
             job.stage = "sampling"
             job.progress = min(99, int(round((info.get("i", 0) + 1) / steps * 95)))
 
+        batch = int(req["batch_size"])
+        prompt = req["prompt"]
+        negative = req.get("negative_prompt") or None
+        # One text for the batch, or one per variant (a list the length of the batch).
+        if isinstance(prompt, list) and len(prompt) == 1:
+            prompt = prompt[0]
+        if isinstance(negative, list):
+            negative = negative[0] if len(negative) == 1 else negative
+            if isinstance(negative, list) and not any(negative):
+                negative = None
         kwargs: dict[str, Any] = {
-            "prompt": req["prompt"],
-            "negative_prompt": req.get("negative_prompt") or None,
+            "prompt": prompt,
+            "negative_prompt": negative,
             "duration": float(req["duration"]),
             # generate() clamps the audio length to sample_size, whose default is 120 s; the checkpoint's
             # own limit (380 s for medium) lives in its config, the same value the upstream CLI passes.
@@ -155,7 +171,7 @@ class Engine:
             "steps": steps,
             "cfg_scale": float(req["cfg_scale"]),
             "seed": seed,
-            "batch_size": int(req["batch_size"]),
+            "batch_size": batch,
             "callback": on_step,
             "disable_tqdm": True,
         }
@@ -188,7 +204,10 @@ class Engine:
         durations: list[float] = []
         for i in range(audio.shape[0]):
             fname = f"{job.id}_{i}.wav"
-            durations.append(write_wav(self.out_dir / fname, audio[i], sr))
+            clip = audio[i]
+            if task == "text" and req.get("trim_silence"):
+                clip = trim_leading_silence(clip, sr)
+            durations.append(write_wav(self.out_dir / fname, clip, sr))
             files.append(f"/v1/files/{fname}")
         job.files = files
         job.durations = durations

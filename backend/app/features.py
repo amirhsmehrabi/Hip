@@ -53,7 +53,7 @@ def has_ace_step() -> bool:
     return (ACE_STEP_DIR / ".venv").is_dir()
 
 
-STABLE_AUDIO_MODELS = ("medium", "small-music", "small-sfx")
+STABLE_AUDIO_MODELS = ("medium", "small-music", "small-sfx", "medium-base", "small-music-base", "small-sfx-base")
 
 
 def _hf_hub_dir() -> Path:
