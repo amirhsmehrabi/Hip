@@ -101,7 +101,8 @@ function fmtPos(sec: number): string {
 // The ticked lanes, mixed over a span as long as the sample (from the loop start, else the playhead),
 // go to the model as audio-to-audio: the sample then follows their rhythm and colour, as close as asked.
 const listen = ref(false)
-const closeness = ref(0.5)
+// At 0.5 the result is still the source (its timbre survives); from about 0.3 down the words win.
+const closeness = ref(0.3)
 const candidateLanes = computed(() => store.project.lanes.filter((l) => l.clips.some((c) => c.type !== 'midi' && c.sourceUrl)))
 const listenIds = ref<string[]>([])
 const knownLanes = new Set<string>()

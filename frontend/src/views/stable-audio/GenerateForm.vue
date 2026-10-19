@@ -66,7 +66,11 @@ const refDurationSec = ref(0)
 const refTrackId = ref<number | null>(null)
 const refLoading = ref(false)
 const refMode = ref<Sa3RefMode>('cover')
-const closeness = ref(0.5)
+// Measured on a drums stem with an organ prompt: at 0.5 the result is still the drums (the source's
+// timbre survives), from about 0.3 down the words win. Upstream's own restyle example uses 0.1.
+const closeness = ref(0.3)
+/** What the slider's position does, in words: remake, change the instrument, or vary. */
+const closenessBand = computed(() => (closeness.value < 0.35 ? 'remake' : closeness.value <= 0.6 ? 'timbre' : 'variation'))
 /** A cover is as long as the source unless the user wants a length of their own. */
 const lengthMode = ref<'source' | 'custom'>('source')
 const customSec = ref(30)
@@ -324,7 +328,9 @@ function applyExample(text: string) {
             <label class="block space-y-1">
               <span class="text-xs text-text">{{ t('sa3Gen.ref.closeness', { v: closeness.toFixed(2) }) }}</span>
               <input v-model.number="closeness" type="range" min="0" max="1" step="0.05" class="w-full accent-accent1" />
+              <span class="flex justify-between text-[10px] text-text-dim"><span>{{ t('sa3Gen.ref.closenessLow') }}</span><span>{{ t('sa3Gen.ref.closenessHigh') }}</span></span>
             </label>
+            <p class="text-xs" :class="closenessBand === 'variation' ? 'text-status-queued' : 'text-text-dim'">{{ t(`sa3Gen.ref.closenessBands.${closenessBand}`) }}</p>
             <!-- the result's length: the source's, or one of your own (shorter covers the start, longer carries on) -->
             <div class="space-y-1">
               <div class="flex items-center gap-2">
