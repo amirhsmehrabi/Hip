@@ -43,8 +43,10 @@ export interface SfxVariant {
   title: string
   index: number
   durationSec: number | null
-  /** Placed on a lane at least once: its library file stays when the job is dismissed. */
+  /** Placed on a lane at least once (a label; what stays on dismissal is decided by the project's clips). */
   used: boolean
+  /** Library files made from this result when it was placed (a seamed loop): dismissed with it. */
+  copies: { url: string; trackId: number }[]
 }
 
 export type SfxStatus = 'queued' | 'running' | 'saving' | 'done' | 'failed' | 'cancelled'
@@ -169,10 +171,10 @@ export const useSfxStore = defineStore('sfx', {
             await resp.blob(),
             'wav',
           )
-          job.variants.push({ url: saved.audio_url, trackId: saved.id, title, index: i, durationSec, used: false })
+          job.variants.push({ url: saved.audio_url, trackId: saved.id, title, index: i, durationSec, used: false, copies: [] })
         } catch {
           // Library save failed: still offer the (temporary) engine URL.
-          job.variants.push({ url, trackId: null, title, index: i, durationSec, used: false })
+          job.variants.push({ url, trackId: null, title, index: i, durationSec, used: false, copies: [] })
         }
       }
       job.status = job.variants.length ? 'done' : 'failed'
@@ -190,15 +192,19 @@ export const useSfxStore = defineStore('sfx', {
       }
       if (job.status === 'queued' || job.status === 'running') job.status = 'cancelled'
     },
-    /** Drops the job; results never placed on a lane leave the library with it. */
-    async removeJob(jobId: string) {
+    /**
+     * Drops the job and deletes its results from the library (the database row and the file on disk),
+     * except those a clip still plays: `keepUrls` is the set of source URLs on the project's lanes.
+     */
+    async removeJob(jobId: string, keepUrls: ReadonlySet<string> = new Set()) {
       const job = this.jobs.find((j) => j.id === jobId)
       this.jobs = this.jobs.filter((j) => j.id !== jobId)
       if (!job) return
-      for (const v of job.variants) {
-        if (v.used || v.trackId == null) continue
+      const files = job.variants.flatMap((v) => [{ url: v.url, trackId: v.trackId }, ...v.copies])
+      for (const f of files) {
+        if (f.trackId == null || keepUrls.has(f.url)) continue
         try {
-          await tracksApi.deleteTrack(v.trackId)
+          await tracksApi.deleteTrack(f.trackId)
         } catch {
           // already gone
         }

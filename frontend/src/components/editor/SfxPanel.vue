@@ -262,6 +262,7 @@ async function insert(job: SfxJob, v: SfxVariant) {
       key = saved.audio_url
       buf = seamed
       props.buffers.set(key, buf)
+      v.copies.push({ url: key, trackId: saved.id })
     }
     const loop = store.project.loopRegion?.enabled ? store.project.loopRegion : null
     const clip: Clip = {
@@ -288,6 +289,12 @@ async function insert(job: SfxJob, v: SfxVariant) {
   } finally {
     inserting.value = null
   }
+}
+/** Dismisses the job; its files are deleted unless a clip on a lane still plays them. */
+function dismiss(job: SfxJob) {
+  const onLanes = new Set<string>()
+  for (const lane of store.project.lanes) for (const c of lane.clips) if (c.sourceUrl) onLanes.add(c.sourceUrl)
+  void sfxStore.removeJob(job.id, onLanes)
 }
 function statusKey(job: SfxJob): string {
   return job.status === 'saving' ? 'sfx.saving' : `jobStatus.${job.status}`
@@ -453,7 +460,7 @@ function statusKey(job: SfxJob): string {
           <span v-if="job.request.reference" class="shrink-0 rounded border border-accent1/40 px-1 text-[10px] text-accent1" :title="t('sfx.listenRange', { range: `${fmtPos(job.request.reference.start)}–${fmtPos(job.request.reference.end)}` })">{{ t('sfx.byTracks') }}</span>
           <span class="shrink-0 text-text-dim">{{ fmtSec(job.request.duration) }}</span>
           <button v-if="job.status === 'queued' || job.status === 'running'" type="button" class="shrink-0 text-text-dim hover:text-status-failed" @click="sfxStore.cancel(job.id)">{{ t('aiPart.cancel') }}</button>
-          <button v-else type="button" class="shrink-0 text-text-dim hover:text-text" :title="t('sfx.dismissTitle')" @click="sfxStore.removeJob(job.id)">{{ t('aiPart.dismiss') }}</button>
+          <button v-else type="button" class="shrink-0 text-text-dim hover:text-text" :title="t('sfx.dismissTitle')" @click="dismiss(job)">{{ t('aiPart.dismiss') }}</button>
         </div>
         <div v-if="job.status === 'queued' || job.status === 'running' || job.status === 'saving'" class="space-y-1">
           <div class="h-1.5 w-full overflow-hidden rounded-full bg-panel">
