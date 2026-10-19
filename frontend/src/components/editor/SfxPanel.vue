@@ -444,9 +444,9 @@ function statusKey(job: SfxJob): string {
       </div>
     </div>
 
-    <!-- Results, newest first: audition, then place -->
-    <div v-if="jobs.length" class="flex gap-3 overflow-x-auto pb-1">
-      <article v-for="job in jobs" :key="job.id" class="flex w-96 shrink-0 flex-col gap-2 rounded-lg border border-border/60 bg-panel-2/60 p-2.5 text-xs">
+    <!-- Results, newest first: audition, then place. Cards fill the width and wrap; in the right dock they stack. -->
+    <div v-if="jobs.length" class="grid gap-3" :class="narrow ? 'grid-cols-1' : 'grid-cols-[repeat(auto-fill,minmax(22rem,1fr))]'">
+      <article v-for="job in jobs" :key="job.id" class="flex min-w-0 flex-col gap-2 rounded-lg border border-border/60 bg-panel-2/60 p-2.5 text-xs">
         <div class="flex items-center gap-2">
           <span class="h-2 w-2 shrink-0 rounded-full" :class="job.request.kind === 'loop' ? 'bg-cyan-400' : 'bg-slate-400'" aria-hidden="true"></span>
           <p class="min-w-0 flex-1 truncate font-medium text-text" :title="job.request.caption">{{ t(`sfx.kinds.${job.request.kind}`) }} · {{ job.request.caption }}</p>
