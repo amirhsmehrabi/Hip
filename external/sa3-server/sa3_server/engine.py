@@ -149,6 +149,9 @@ class Engine:
             "prompt": req["prompt"],
             "negative_prompt": req.get("negative_prompt") or None,
             "duration": float(req["duration"]),
+            # generate() clamps the audio length to sample_size, whose default is 120 s; the checkpoint's
+            # own limit (380 s for medium) lives in its config, the same value the upstream CLI passes.
+            "sample_size": int(model.model_config["sample_size"]),
             "steps": steps,
             "cfg_scale": float(req["cfg_scale"]),
             "seed": seed,
