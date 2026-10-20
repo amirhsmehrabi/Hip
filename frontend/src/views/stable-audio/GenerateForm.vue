@@ -240,6 +240,8 @@ async function submit() {
   try {
     await store.generate({
       kind: kind.value, model: model.value,
+      // the title is the description as typed: with the service tags every track was called "TrackType: Music"
+      title: perVariantTexts ? perVariantTexts[0] : text,
       prompt: withTags(perVariantTexts ? perVariantTexts[0] : text),
       prompts: perVariantTexts ? perVariantTexts.map(withTags) : null,
       caption: perVariantTexts ? perVariantTexts.join(' | ') : text,
