@@ -1,6 +1,6 @@
 'use strict';
-// Copies what the installed app needs next to its executable: the backend sources, the built frontend and the
-// ACE-Step patch. Run by `npm run dist`. Never ships anything from a developer's machine (.env, database, venv).
+// Copies what the installed app needs next to its executable: the backend sources, the built frontend, the
+// ACE-Step patch and the Stable Audio 3 server sources (installed into a venv on the user's machine). Run by `npm run dist`. Never ships anything from a developer's machine (.env, database, venv).
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
@@ -39,6 +39,19 @@ fs.cpSync(dist, path.join(out, 'frontend', 'dist'), { recursive: true });
 
 fs.mkdirSync(path.join(out, 'patches'), { recursive: true });
 fs.copyFileSync(path.join(root, 'external', 'patches', 'ace-step.patch'), path.join(out, 'patches', 'ace-step.patch'));
+
+// The Stable Audio 3 server: a uv project; only its sources, not the venv or the WAVs it generated.
+const sa3Src = path.join(root, 'external', 'sa3-server');
+const SA3_SOURCES = new Set(['pyproject.toml', 'README.md', 'sa3_server']);
+fs.cpSync(sa3Src, path.join(out, 'sa3-server'), {
+  recursive: true,
+  filter: (src) => {
+    const rel = path.relative(sa3Src, src);
+    if (!rel) return true;
+    if (!SA3_SOURCES.has(rel.split(path.sep)[0])) return false;
+    return !rel.split(path.sep).includes('__pycache__') && !rel.endsWith('.pyc');
+  },
+});
 
 // Guard: fail the build rather than ship personal data.
 const forbidden = [];

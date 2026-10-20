@@ -65,13 +65,24 @@ def _hf_hub_dir() -> Path:
     return Path.home() / ".cache" / "huggingface" / "hub"
 
 
+# Each checkpoint repo carries its own text encoder next to the DiT weights; both are needed to generate
+# (sa3_server/specs.py REQUIRED_FILES).
+STABLE_AUDIO_REQUIRED = ("model.safetensors", "t5gemma-b-b-ul2/model.safetensors")
+
+
 def stable_audio_models() -> list[str]:
-    """Checkpoints whose download finished: a snapshot folder holding model.safetensors."""
+    """Checkpoints whose download finished: a snapshot folder holding the weights and the text encoder,
+    and no download from the app still running for it."""
+    from . import sa3_weights  # imports this module
+
     hub = _hf_hub_dir()
+    downloading = sa3_weights.active()
     found = []
     for name in STABLE_AUDIO_MODELS:
         snaps = hub / f"models--stabilityai--stable-audio-3-{name}" / "snapshots"
-        if snaps.is_dir() and any((d / "model.safetensors").is_file() for d in snaps.iterdir()):
+        if name == downloading or not snaps.is_dir():
+            continue
+        if any(all((d / f).is_file() for f in STABLE_AUDIO_REQUIRED) for d in snaps.iterdir()):
             found.append(name)
     return found
 

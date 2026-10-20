@@ -86,6 +86,21 @@ torch = { index = "pytorch-cu128" }
 `;
 }
 
+/** A short hash of every file under `dir` (paths and contents), or `fallback` when there is no such folder. */
+function treeHash(dir, fallback) {
+  if (!dir || !fs.existsSync(dir)) return fallback;
+  const hash = crypto.createHash('sha1');
+  (function walk(d) {
+    for (const e of fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      if (e.name === '__pycache__' || e.name === '.venv') continue;
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else hash.update(path.relative(dir, p).split(path.sep).join('/')).update('\0').update(fs.readFileSync(p));
+    }
+  })(dir);
+  return hash.digest('hex').slice(0, 12);
+}
+
 /** First file called `name` anywhere under `dir` (archives differ: uv's zip is flat, its tarballs have a top folder). */
 async function findFile(dir, name) {
   for (const entry of await fsp.readdir(dir, { withFileTypes: true })) {
@@ -117,7 +132,7 @@ async function placeEngineFiles(extracted, L) {
  * `selection` (bootstrap/features.js) leaves out the optional parts the user did not pick; without one, all of them.
  */
 function buildComponents({ L, manifest, platform, resources, selection }) {
-  const sel = selection || { yue2: true, yue2Precisions: [...PRECISIONS], demucs: true, aceBase: true, aceXl: false };
+  const sel = selection || { yue2: true, yue2Precisions: [...PRECISIONS], demucs: true, aceBase: true, aceXl: false, stableAudio: true };
   const engine = manifest.engine.assets[platform];
   const uvAsset = manifest.uv.assets[platform];
   const ffAsset = manifest.ffmpeg.assets[platform];
@@ -289,6 +304,27 @@ function buildComponents({ L, manifest, platform, resources, selection }) {
     },
   };
 
+  // Stable Audio 3: our server's sources ship with the app and get a uv project of their own under engines/. The
+  // version is a hash of those sources, so an app update with a changed server copies it again (and `uv sync` only
+  // fetches what changed). The weights are gated on Hugging Face: the app's Stable Audio 3 page downloads them.
+  const stableAudio = {
+    id: 'stable-audio',
+    weight: manifest.stableAudio.approxBytes,
+    version: `sa3-${treeHash(resources.sa3Server, 'nosrc')}`,
+    verify: () => exists(path.join(L.stableAudio, '.venv')),
+    async install(ctx, report) {
+      if (!resources.sa3Server || !(await exists(path.join(resources.sa3Server, 'pyproject.toml')))) {
+        throw new Error('The Stable Audio 3 server sources are missing from this build of the app.');
+      }
+      await fsp.mkdir(L.stableAudio, { recursive: true });
+      // the old sources go; the venv and the generated files stay
+      await fsp.rm(path.join(L.stableAudio, 'sa3_server'), { recursive: true, force: true });
+      await fsp.cp(resources.sa3Server, L.stableAudio, { recursive: true, force: true });
+      await withCacheGrowth(L.uvCache, manifest.stableAudio.approxBytes, report, () =>
+        retrying(ctx, report, () => runCommand(L.uvBin, ['sync'], { cwd: L.stableAudio, env: uvEnv(L), onLine: (line) => report({ note: line }), signal: ctx.signal, logFile })));
+    },
+  };
+
   // The common weights plus the YuE2 precisions picked. The version is the package list, so adding a precision later
   // re-runs this step; the downloader skips packages that are already there.
   const packages = weightPackages(manifest, sel);
@@ -319,7 +355,7 @@ function buildComponents({ L, manifest, platform, resources, selection }) {
 
   // Order matters: the backend venv provides the Python that runs the weights downloader.
   const left = new Set(excludedComponents(sel));
-  return [uv, ffmpeg, engineStep, backendEnv, aceStep, aceModels, aceBaseModel, aceXlModel, demucs, weights].filter((c) => !left.has(c.id));
+  return [uv, ffmpeg, engineStep, backendEnv, aceStep, aceModels, aceBaseModel, aceXlModel, demucs, stableAudio, weights].filter((c) => !left.has(c.id));
 }
 
 /** Path of ffmpeg: a pinned build under tools/ffmpeg where there is one, otherwise whatever the system has. */
@@ -334,4 +370,4 @@ function ffmpegExecutable(L, manifest, platform) {
   return path.join('/usr/local/bin', 'ffmpeg');
 }
 
-module.exports = { buildComponents, ffmpegExecutable, demucsProject, dirSize };
+module.exports = { buildComponents, ffmpegExecutable, demucsProject, dirSize, treeHash };

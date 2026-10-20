@@ -3,14 +3,21 @@
 Clones the original ACE-Step-1.5 and audio.cpp (YuE2) repositories into
 external/, applies Remiqora's small patches on top (see
 external/patches/README.md), builds/prepares each engine, sets up a
-Demucs (stem separation) uv project in external/Demucs, and writes
-backend/.env with all of the above plus an auto-detected FFMPEG_BIN_DIR.
+Demucs (stem separation) uv project in external/Demucs, the Stable Audio 3
+server environment (external/sa3-server), and writes backend/.env with all of
+the above plus an auto-detected FFMPEG_BIN_DIR.
+
+Stable Audio 3 weights are downloaded from the app (the Stable Audio 3 page),
+or here with -StableAudioModels, e.g. -StableAudioModels small-sfx,medium.
 
 Re-run any time - every step is idempotent (skips work that is already done).
 #>
 
 param(
     [switch]$SkipStableAudio,
+    # Stable Audio 3 checkpoints to download after the environment: medium, small-music, small-sfx
+    # and their -base twins. The first three are gated (licence + Hugging Face token, see below).
+    [string[]]$StableAudioModels = @(),
     [switch]$SkipBuild,
     [switch]$SkipWeights
 )
@@ -252,10 +259,12 @@ if (Assert-Command "uv" "Install it from https://docs.astral.sh/uv/getting-start
 Write-Step "Stable Audio 3 (sa3-server)"
 # Our own small HTTP server around Stability's stable-audio-3 package: the uv project is
 # tracked in the repository (external/sa3-server), so there is nothing to clone - only
-# "uv sync", which also pulls torch (cu128) and a prebuilt Flash Attention wheel. The weights
-# are gated on Hugging Face and are NOT fetched here: accept the licence on the
-# stabilityai/stable-audio-3-* pages, run "uvx --from huggingface_hub hf auth login" and
-# "uvx --from huggingface_hub hf download stabilityai/stable-audio-3-medium" once.
+# "uv sync", which also pulls torch (cu128) and a prebuilt Flash Attention wheel.
+# The weights go to the Hugging Face cache. The easy way is the app: the Stable Audio 3 page
+# lists the checkpoints with a Download button and takes a Hugging Face token. Here they are
+# fetched only when asked for with -StableAudioModels. medium, small-music and small-sfx are
+# gated: accept the licence on their huggingface.co pages first and save a token, either in the
+# app or with "external\sa3-server\.venv\Scripts\hf.exe auth login". The -base ones are open.
 $stableAudioDir = Join-Path $externalDir "sa3-server"
 if (-not (Test-Path (Join-Path $stableAudioDir "pyproject.toml"))) {
     Write-Host "external/sa3-server is missing from this checkout - skipping Stable Audio 3." -ForegroundColor Yellow
@@ -266,6 +275,17 @@ if (-not (Test-Path (Join-Path $stableAudioDir "pyproject.toml"))) {
     try {
         Write-Host "Running 'uv sync' for sa3-server (pulls the CUDA build of PyTorch and Flash Attention, can take a while) ..."
         uv sync
+        $sa3Python = Join-Path $stableAudioDir ".venv\Scripts\python.exe"
+        foreach ($model in ($StableAudioModels | ForEach-Object { $_ -split ',' } | Where-Object { $_ })) {
+            Write-Host "Downloading the Stable Audio 3 checkpoint '$model' ..."
+            & $sa3Python -m sa3_server.download $model.Trim()
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "Could not download '$model' (see the error above). Download it later from the app's Stable Audio 3 page." -ForegroundColor Yellow
+            }
+        }
+        if (-not $StableAudioModels) {
+            Write-Host "Weights: download them from the app (Stable Audio 3 page), or re-run with -StableAudioModels small-sfx,medium."
+        }
     } finally {
         Pop-Location
     }

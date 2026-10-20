@@ -11,11 +11,11 @@ uv sync
 uv run sa3-server --host 127.0.0.1 --port 8002
 ```
 
-The weights are gated on Hugging Face: accept the licence on
-`stabilityai/stable-audio-3-medium` (and `-small-music`, `-small-sfx` if you want them),
-log in once with `uvx --from huggingface_hub hf auth login` and download with
-`hf download stabilityai/stable-audio-3-medium`. The server reads the Hugging Face cache
-(`HF_HOME`) and never downloads on its own.
+The server reads the weights from the Hugging Face cache (`HF_HOME`) and never downloads on
+its own. `python -m sa3_server.download <model>` fetches one (`--json` prints progress events
+for Remiqora's backend, which runs it from the app's Stable Audio 3 page; `--login` reads a
+token from stdin and saves it). `medium`, `small-music` and `small-sfx` are gated: accept the
+licence on `stabilityai/stable-audio-3-<model>` first; the `-base` checkpoints are open.
 
 API (all under `/v1`): `GET /health`, `GET /v1/models`, `POST /v1/models/load`,
 `POST /v1/jobs` (multipart), `POST /v1/jobs/query`, `POST /v1/jobs/{id}/cancel`,

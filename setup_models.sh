@@ -3,9 +3,11 @@
 # external/patches/README.md) and runs 'uv sync' for it; installs YuE2
 # (audiocpp_server) from audio.cpp's own prebuilt macOS/Metal release - no
 # compiler needed, see the --from-source flag below for the alternative;
-# sets up a Demucs (stem separation) uv project in external/Demucs; and
-# writes backend/.env with all of the above plus an auto-detected
-# FFMPEG_BIN_DIR.
+# sets up a Demucs (stem separation) uv project in external/Demucs and the
+# Stable Audio 3 server environment (external/sa3-server); and writes
+# backend/.env with all of the above plus an auto-detected FFMPEG_BIN_DIR.
+# Stable Audio 3 weights are downloaded from the app (its Stable Audio 3
+# page), or here with --stable-audio-models=small-music,small-sfx.
 #
 # Windows equivalent: setup_models.ps1 (which always builds audio.cpp from
 # source, CUDA backend, since there's no prebuilt CUDA release - and routes
@@ -29,13 +31,15 @@ fi
 SKIP_BUILD=0
 SKIP_WEIGHTS=0
 FROM_SOURCE=0
+STABLE_AUDIO_MODELS=""
 for arg in "$@"; do
     case "$arg" in
         --skip-build) SKIP_BUILD=1 ;;
         --skip-weights) SKIP_WEIGHTS=1 ;;
         --from-source) FROM_SOURCE=1 ;;
+        --stable-audio-models=*) STABLE_AUDIO_MODELS="${arg#*=}" ;;
         *)
-            echo "Unknown option: $arg (expected --skip-build / --skip-weights / --from-source)" >&2
+            echo "Unknown option: $arg (expected --skip-build / --skip-weights / --from-source / --stable-audio-models=a,b)" >&2
             exit 1
             ;;
     esac
@@ -297,10 +301,12 @@ fi
 step "Stable Audio 3 (sa3-server)"
 # Our own small HTTP server around Stability's stable-audio-3 package; the uv project is
 # tracked in the repository (external/sa3-server), so only "uv sync" runs here. On a Mac
-# only the small checkpoints run (medium needs CUDA + Flash Attention). The weights are gated
-# on Hugging Face and are NOT fetched here: accept the licence on the stabilityai/stable-audio-3-*
-# pages, then "uvx --from huggingface_hub hf auth login" and
-# "uvx --from huggingface_hub hf download stabilityai/stable-audio-3-small-music".
+# only the small checkpoints run (medium needs CUDA + Flash Attention).
+# The weights go to the Hugging Face cache. The easy way is the app: the Stable Audio 3 page
+# lists the checkpoints with a Download button and takes a Hugging Face token. Here they are
+# fetched only when asked for with --stable-audio-models. small-music and small-sfx are gated:
+# accept the licence on their huggingface.co pages first and save a token, either in the app
+# or with "external/sa3-server/.venv/bin/hf auth login". The -base ones are open.
 STABLE_AUDIO_DIR="$EXTERNAL_DIR/sa3-server"
 if [[ ! -f "$STABLE_AUDIO_DIR/pyproject.toml" ]]; then
     echo "external/sa3-server is missing from this checkout - skipping Stable Audio 3."
@@ -309,6 +315,14 @@ elif assert_command uv "Install it from https://docs.astral.sh/uv/getting-starte
         cd "$STABLE_AUDIO_DIR"
         echo "Running 'uv sync' for sa3-server (can take a while) ..."
         uv sync
+        if [[ -n "$STABLE_AUDIO_MODELS" ]]; then
+            for model in ${STABLE_AUDIO_MODELS//,/ }; do
+                echo "Downloading the Stable Audio 3 checkpoint '$model' ..."
+                .venv/bin/python -m sa3_server.download "$model"                     || echo "Could not download '$model' (see the error above). Download it later from the app's Stable Audio 3 page."
+            done
+        else
+            echo "Weights: download them from the app (Stable Audio 3 page), or re-run with --stable-audio-models=small-music,small-sfx."
+        fi
     )
 else
     echo "Skipped sa3-server 'uv sync' - install uv and re-run this script."
@@ -333,7 +347,7 @@ YUE2_DIR=$AUDIOCPP_DIR
 DEMUCS_DIR=$DEMUCS_DIR
 
 # Stable Audio 3: our HTTP server (external/sa3-server). Weights come from the Hugging Face
-# cache (gated: accept the licence, "hf auth login", "hf download stabilityai/stable-audio-3-small-music").
+# cache; download them from the app's Stable Audio 3 page (or --stable-audio-models when running this script).
 STABLE_AUDIO_DIR=$STABLE_AUDIO_DIR
 STABLE_AUDIO_PRELOAD=small-music
 

@@ -355,7 +355,8 @@ function statusKey(job: SfxJob): string {
         {{ t('aiPart.engineStarting', { engine: engineLabel }) }}
       </p>
       <template v-else-if="!features.has('stableAudio')">
-        <p class="text-text-dim">{{ t('notInstalled.stableAudio.text') }}</p>
+        <p class="text-text-dim">{{ t(features.features.stable_audio_env ? 'sfx.needWeights' : 'notInstalled.stableAudio.text') }}</p>
+        <RouterLink v-if="features.features.stable_audio_env" to="/stable-audio" class="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-accent1">{{ t('sfx.openWeights') }}</RouterLink>
       </template>
       <template v-else>
         <p class="text-text-dim">{{ t('sfx.offline') }}</p>

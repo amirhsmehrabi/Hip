@@ -12,7 +12,7 @@ function repoRoot() {
 }
 
 /**
- * Where the backend sources, the built frontend and the ACE-Step patch live:
+ * Where the backend sources, the built frontend, the ACE-Step patch and the Stable Audio 3 server sources live:
  * next to the app when installed, inside the repository when running from source.
  * The backend finds the frontend as ../frontend/dist relative to itself, so both
  * layouts keep that shape.
@@ -24,6 +24,7 @@ function resourcePaths(isPackaged) {
       backend: path.join(base, 'backend'),
       frontendDist: path.join(base, 'frontend', 'dist'),
       acePatch: path.join(base, 'patches', 'ace-step.patch'),
+      sa3Server: path.join(base, 'sa3-server'),
     };
   }
   const root = repoRoot();
@@ -31,6 +32,7 @@ function resourcePaths(isPackaged) {
     backend: path.join(root, 'backend'),
     frontendDist: path.join(root, 'frontend', 'dist'),
     acePatch: path.join(root, 'external', 'patches', 'ace-step.patch'),
+    sa3Server: path.join(root, 'external', 'sa3-server'),
   };
 }
 
@@ -68,6 +70,7 @@ function layout(root, platform = PLATFORM, manifest = null) {
     yue2,
     yue2Bin: path.join(yue2, 'build', preset, 'bin'),
     demucs: path.join(root, 'engines', 'Demucs'),
+    stableAudio: path.join(root, 'engines', 'StableAudio'),
     backendVenv,
     backendPython: path.join(backendVenv, IS_WINDOWS ? 'Scripts' : 'bin', IS_WINDOWS ? 'python.exe' : 'python'),
     data: path.join(root, 'data'),

@@ -66,6 +66,7 @@ Optional (ids from [`src/bootstrap/features.js`](src/bootstrap/features.js)):
 | `demucs` | `demucs` | on |
 | `aceBase` | `ace-base-model` (`acestep-v15-base`, ~4.8 GB) | off |
 | `aceXl` | `ace-xl-model` (`acestep-v15-xl-base`, ~20 GB, warned below 16 GB of video memory) | off |
+| `stableAudio` | `stable-audio` (the sa3-server environment, ~4.5 GB; the gated weights are downloaded later on the app's Stable Audio 3 page) | off |
 
 The choice is saved as `features` in the user-data `config.json` and is always widened by what is already on disk, so a
 later run only adds. An install from before the choice existed (it has a `state.json`) keeps everything it had. The app
@@ -84,6 +85,8 @@ Everything lives under the chosen folder, so removing it removes the app's data:
 | `engines/ACE-Step-1.5` | ACE-Step at the pinned commit with `external/patches/ace-step.patch` applied, plus its `uv sync` environment | GitHub source archive |
 | `engines/ACE-Step-1.5/checkpoints` | ACE-Step generation models (~9.4 GB), fetched with `acestep-download` so the first generation does not stall, plus, if picked, the base DiT (`acestep-v15-base`, ~4.8 GB) and the XL base (`acestep-v15-xl-base`, ~20 GB) the editor's AI arranger adds parts with | Hugging Face (ModelScope as ACE-Step's fallback) |
 | `engines/Demucs` | a uv project with Demucs and CUDA torch | PyPI / PyTorch index |
+| `engines/StableAudio` | `external/sa3-server` (shipped with the app, copied again when it changes) and its `uv sync` environment | PyPI / PyTorch index, Stable Audio 3 source archive |
+| `cache/huggingface/hub` | Stable Audio 3 checkpoints, downloaded from the app (gated: the user pastes a Hugging Face token there, saved as `cache/huggingface/token`) | Hugging Face |
 | `backend-venv` | the environment the Remiqora backend runs in | PyPI |
 | `data`, `logs` | database, generated audio, logs | created at run time |
 | `engines/YuE2/models` | YuE2 (`q8_0` 4.3 GB and/or `q4_0` 2.7 GB), its VAE, SheetSage2 and MuScriptor weights (3.4 GB) | audio.cpp model manager |

@@ -6,23 +6,23 @@ const os = require('node:os');
 const path = require('node:path');
 const manifest = require('../manifest.json');
 const { DEFAULT_SELECTION, detectInstalled, resolveSelection, weightPackages, featureSizes, excludedComponents } = require('../src/bootstrap/features');
-const { buildComponents } = require('../src/bootstrap/components');
+const { buildComponents, treeHash } = require('../src/bootstrap/components');
 const { runChecks } = require('../src/bootstrap/checks');
 const { layout, IS_WINDOWS } = require('../src/paths');
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'remiqora-features-'));
-const nothing = { yue2: false, yue2Precisions: [], demucs: false, aceBase: false, aceXl: false };
+const nothing = { yue2: false, yue2Precisions: [], demucs: false, aceBase: false, aceXl: false, stableAudio: false };
 const ids = (sel) => buildComponents({ L: layout(tmp(), 'win32-x64', manifest), manifest, platform: 'win32-x64', resources: { acePatch: 'x', backend: 'x' }, selection: sel }).map((c) => c.id);
 
 test('a fresh install gets the defaults, an older one keeps everything', () => {
   assert.deepEqual(resolveSelection(null, nothing), { ...DEFAULT_SELECTION, yue2Precisions: ['q8_0'] });
-  assert.deepEqual(resolveSelection(null, nothing, { legacyInstall: true }), { yue2: true, yue2Precisions: ['q8_0', 'q4_0'], demucs: true, aceBase: false, aceXl: false });
+  assert.deepEqual(resolveSelection(null, nothing, { legacyInstall: true }), { yue2: true, yue2Precisions: ['q8_0', 'q4_0'], demucs: true, aceBase: false, aceXl: false, stableAudio: false });
 });
 
 test('the selection never drops what is installed, and YuE2 always has a precision', () => {
-  const installed = { yue2: true, yue2Precisions: ['q4_0'], demucs: true, aceBase: false, aceXl: false };
+  const installed = { yue2: true, yue2Precisions: ['q4_0'], demucs: true, aceBase: false, aceXl: false, stableAudio: true };
   const sel = resolveSelection({ yue2: false, yue2Precisions: [], demucs: false, aceBase: true }, installed);
-  assert.deepEqual(sel, { yue2: true, yue2Precisions: ['q4_0'], demucs: true, aceBase: true, aceXl: false });
+  assert.deepEqual(sel, { yue2: true, yue2Precisions: ['q4_0'], demucs: true, aceBase: true, aceXl: false, stableAudio: true });
   assert.deepEqual(resolveSelection({ yue2: true, yue2Precisions: [] }, nothing).yue2Precisions, ['q8_0']);
 });
 
@@ -33,11 +33,12 @@ test('weights follow the precisions; both keep the version older installs record
 });
 
 test('components left out with their feature', () => {
-  assert.deepEqual(ids(undefined), ['uv', 'ffmpeg', 'engine', 'backend-env', 'ace-step', 'ace-models', 'ace-base-model', 'demucs', 'weights']);
+  assert.deepEqual(ids(undefined), ['uv', 'ffmpeg', 'engine', 'backend-env', 'ace-step', 'ace-models', 'ace-base-model', 'demucs', 'stable-audio', 'weights']);
   assert.deepEqual(ids(nothing), ['uv', 'ffmpeg', 'backend-env', 'ace-step', 'ace-models']);
   assert.deepEqual(ids({ ...nothing, demucs: true }), ['uv', 'ffmpeg', 'backend-env', 'ace-step', 'ace-models', 'demucs']);
   assert.deepEqual(ids({ ...nothing, aceXl: true }), ['uv', 'ffmpeg', 'backend-env', 'ace-step', 'ace-models', 'ace-xl-model']);
-  assert.deepEqual(excludedComponents({ yue2: true, demucs: false, aceBase: false, aceXl: false }), ['demucs', 'ace-base-model', 'ace-xl-model']);
+  assert.deepEqual(ids({ ...nothing, stableAudio: true }), ['uv', 'ffmpeg', 'backend-env', 'ace-step', 'ace-models', 'stable-audio']);
+  assert.deepEqual(excludedComponents({ yue2: true, demucs: false, aceBase: false, aceXl: false, stableAudio: false }), ['demucs', 'ace-base-model', 'ace-xl-model', 'stable-audio']);
 });
 
 test('sizes: YuE2 grows with each precision', () => {
@@ -45,6 +46,7 @@ test('sizes: YuE2 grows with each precision', () => {
   const both = featureSizes(manifest, 'win32-x64', { yue2Precisions: ['q8_0', 'q4_0'] });
   assert.equal(both.yue2 - one.yue2, manifest.weights.precisions.q4_0.bytes);
   assert.equal(one.demucs, manifest.demucs.approxBytes);
+  assert.equal(one.stableAudio, manifest.stableAudio.approxBytes);
 });
 
 test('what is installed is read from disk', () => {
@@ -54,7 +56,24 @@ test('what is installed is read from disk', () => {
   put(path.join(L.yue2Bin, IS_WINDOWS ? 'audiocpp_server.exe' : 'audiocpp_server'));
   put(path.join(L.yue2, 'models', 'Yue2-3B-GGUF', 'yue2-3b-q4_0.gguf'));
   fs.mkdirSync(path.join(L.demucs, '.venv'), { recursive: true });
-  assert.deepEqual(detectInstalled(L), { yue2: true, yue2Precisions: ['q4_0'], demucs: true, aceBase: false, aceXl: false });
+  fs.mkdirSync(path.join(L.stableAudio, '.venv'), { recursive: true });
+  assert.deepEqual(detectInstalled(L), { yue2: true, yue2Precisions: ['q4_0'], demucs: true, aceBase: false, aceXl: false, stableAudio: true });
+});
+
+test('the Stable Audio 3 step follows its server sources', () => {
+  const src = tmp();
+  fs.writeFileSync(path.join(src, 'pyproject.toml'), '[project]\nname = "sa3-server"\n');
+  fs.mkdirSync(path.join(src, 'sa3_server', '__pycache__'), { recursive: true });
+  fs.writeFileSync(path.join(src, 'sa3_server', 'main.py'), 'print(1)\n');
+  const before = treeHash(src, 'none');
+  fs.writeFileSync(path.join(src, 'sa3_server', '__pycache__', 'main.pyc'), 'x');
+  assert.equal(treeHash(src, 'none'), before, 'bytecode does not count');
+  fs.writeFileSync(path.join(src, 'sa3_server', 'main.py'), 'print(2)\n');
+  assert.notEqual(treeHash(src, 'none'), before, 'a changed server is copied again');
+  assert.equal(treeHash(path.join(src, 'missing'), 'none'), 'none');
+  const step = buildComponents({ L: layout(tmp(), 'win32-x64', manifest), manifest, platform: 'win32-x64', resources: { acePatch: 'x', backend: 'x', sa3Server: src }, selection: { ...nothing, stableAudio: true } })
+    .find((c) => c.id === 'stable-audio');
+  assert.equal(step.version, `sa3-${treeHash(src, 'none')}`);
 });
 
 test('the disk check asks for what the picked parts need', async () => {

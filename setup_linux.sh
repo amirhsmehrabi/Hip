@@ -10,6 +10,7 @@ NODE_BIN="${NODE_BIN:-node}"
 NPM_BIN="${NPM_BIN:-npm}"
 CMAKE_BIN="${CMAKE_BIN:-cmake}"
 NVCC_BIN="${NVCC_BIN:-nvcc}"
+STABLE_AUDIO_MODELS="${STABLE_AUDIO_MODELS:-}"
 AUDIOCPP_REF="${AUDIOCPP_REF:-39f9013}"
 ACE_STEP_REF="${ACE_STEP_REF:-ca1e85f}"
 YUE2_PORT="${YUE2_SERVER_PORT:-8080}"
@@ -135,13 +136,19 @@ PYPROJECT
 
 step "Stable Audio 3 (sa3-server)"
 # Our HTTP server around Stability's stable-audio-3 package (tracked in external/sa3-server).
-# Weights are gated on Hugging Face and are not fetched here: accept the licence on the
-# stabilityai/stable-audio-3-* pages, "hf auth login", "hf download stabilityai/stable-audio-3-medium".
+# The weights go to the Hugging Face cache: download them from the app (the Stable Audio 3 page,
+# which also takes a Hugging Face token), or set STABLE_AUDIO_MODELS="medium small-sfx" to fetch
+# them here. medium, small-music and small-sfx are gated: accept the licence on their
+# huggingface.co pages and save a token first ("external/sa3-server/.venv/bin/hf auth login").
 STABLE_AUDIO_DIR="$EXTERNAL_DIR/sa3-server"
 if [[ -f "$STABLE_AUDIO_DIR/pyproject.toml" ]]; then
   (
     cd "$STABLE_AUDIO_DIR"
     "$UV_BIN" sync
+    for model in ${STABLE_AUDIO_MODELS//,/ }; do
+      echo "Downloading the Stable Audio 3 checkpoint '$model' ..."
+      .venv/bin/python -m sa3_server.download "$model"         || echo "Could not download '$model' (see the error above). Download it later from the app's Stable Audio 3 page."
+    done
   )
 else
   echo "external/sa3-server is missing from this checkout - skipping Stable Audio 3."
