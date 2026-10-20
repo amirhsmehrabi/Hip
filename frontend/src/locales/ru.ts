@@ -1556,6 +1556,8 @@ export default {
     placeholderInstrumental: 'тёплый лоу-фай для учёбы дождливым вечером',
     write: 'Написать промт',
     rewrite: 'Ещё вариант',
+    reset: 'Сбросить',
+    resetTitle: 'Очистить идею и промт, чтобы начать заново',
     writing: 'Пишем…',
     writer: 'Кто пишет промт:',
     writerAssistant: 'Помощник',

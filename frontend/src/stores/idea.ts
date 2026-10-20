@@ -55,6 +55,14 @@ export const useIdeaStore = defineStore('idea', () => {
     stopping.value = true
     stopRun?.()
   }
+  /** A clean form for the next idea: the idea, the prompt and the last error go; the choices (song or
+   *  instrumental, language, engine, variants) stay. Not while a prompt is being written. */
+  function reset() {
+    if (writing.value) return
+    idea.value = ''
+    draft.value = null
+    error.value = null
+  }
 
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY) || '{}')
@@ -84,7 +92,7 @@ export const useIdeaStore = defineStore('idea', () => {
 
   return {
     idea, kind, language, writerPref, engine, draft, variants, precision, sa3Model,
-    writing, error, progress, stopping, setStop, stop,
+    writing, error, progress, stopping, setStop, stop, reset,
   }
 })
 

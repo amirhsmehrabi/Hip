@@ -1556,6 +1556,8 @@ export default {
     placeholderInstrumental: 'warm lo-fi for studying on a rainy evening',
     write: 'Write the prompt',
     rewrite: 'Another take',
+    reset: 'Reset',
+    resetTitle: 'Clear the idea and the prompt to start again',
     writing: 'Writing…',
     writer: 'Who writes the prompt:',
     writerAssistant: 'Assistant',

@@ -265,6 +265,8 @@ async function generate() {
     } else {
       await ace.submit(aceRequest(d), null, titleOf(idea.value || d.caption))
     }
+    // the job is sent and the track lands in the engine's feed: the form starts clean for the next idea
+    ideaStore.reset()
     await router.push({ name: info.route })
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
@@ -361,8 +363,18 @@ onMounted(() => {
           <span class="h-1.5 w-1.5 rounded-full" :class="engineRunning(e.id) ? 'bg-status-done' : 'bg-text-dim/50'"></span>
         </button>
         <button
+          v-if="(idea.trim() || draft) && !writing"
           type="button"
-          class="accent-gradient ml-auto inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          class="ml-auto rounded-lg border border-border px-3 py-2 text-sm text-text-dim hover:border-text-dim hover:text-text"
+          :title="t('idea.resetTitle')"
+          @click="ideaStore.reset()"
+        >
+          {{ t('idea.reset') }}
+        </button>
+        <button
+          type="button"
+          class="accent-gradient inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          :class="(idea.trim() || draft) && !writing ? '' : 'ml-auto'"
           :disabled="writing || !idea.trim() || !writer"
           @click="write"
         >
