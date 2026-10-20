@@ -20,6 +20,8 @@ export interface IdeaDraft {
   language: string
   writtenBy: IdeaWriter
   seconds: number
+  /** Stable Audio only: music or a sound (rain, a hit, a whoosh), as its classifier read the idea. */
+  sa3Kind?: 'music' | 'sfx'
 }
 
 const STORE_KEY = 'remiqora.idea'
