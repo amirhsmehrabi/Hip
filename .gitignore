@@ -26,6 +26,7 @@ Thumbs.db
 # Stable Audio 3 server (our code; its venv and generated files are not)
 external/sa3-server/.venv/
 external/sa3-server/output/
+external/sa3-server/output-cpu/
 external/sa3-server/uv.lock
 external/prompt-assistant/.venv/
 external/prompt-assistant/uv.lock
