@@ -110,6 +110,10 @@ class OrchestratorManager:
             current = self.state.active_model
             if not ALLOW_CONCURRENT_MODELS and current is not None and current != model_id:
                 await self._stop_model(current)
+            # the prompt assistant may hold the GPU (device "auto" while it was free): it steps aside
+            from ..assistant import server as assistant_server
+
+            await assistant_server.release_gpu()
             await self._start_model(model_id)
 
     async def stop_active(self) -> None:

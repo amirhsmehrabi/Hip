@@ -132,7 +132,7 @@ async function placeEngineFiles(extracted, L) {
  * `selection` (bootstrap/features.js) leaves out the optional parts the user did not pick; without one, all of them.
  */
 function buildComponents({ L, manifest, platform, resources, selection }) {
-  const sel = selection || { yue2: true, yue2Precisions: [...PRECISIONS], demucs: true, aceBase: true, aceXl: false, stableAudio: true };
+  const sel = selection || { yue2: true, yue2Precisions: [...PRECISIONS], demucs: true, aceBase: true, aceXl: false, stableAudio: true, assistant: true };
   const engine = manifest.engine.assets[platform];
   const uvAsset = manifest.uv.assets[platform];
   const ffAsset = manifest.ffmpeg.assets[platform];
@@ -304,26 +304,32 @@ function buildComponents({ L, manifest, platform, resources, selection }) {
     },
   };
 
-  // Stable Audio 3: our server's sources ship with the app and get a uv project of their own under engines/. The
-  // version is a hash of those sources, so an app update with a changed server copies it again (and `uv sync` only
-  // fetches what changed). The weights are gated on Hugging Face: the app's Stable Audio 3 page downloads them.
-  const stableAudio = {
-    id: 'stable-audio',
-    weight: manifest.stableAudio.approxBytes,
-    version: `sa3-${treeHash(resources.sa3Server, 'nosrc')}`,
-    verify: () => exists(path.join(L.stableAudio, '.venv')),
+  /**
+   * A uv project whose sources ship with the app (Stable Audio 3's server, the prompt assistant): copied under
+   * engines/, then `uv sync`. The version is a hash of the sources, so an app update with changed sources copies them
+   * again (and `uv sync` only fetches what changed). Their models are downloaded from the app, not here.
+   */
+  const bundledUvProject = ({ id, weight, src, dest, pkg, label }) => ({
+    id,
+    weight,
+    version: `${id}-${treeHash(src, 'nosrc')}`,
+    verify: () => exists(path.join(dest, '.venv')),
     async install(ctx, report) {
-      if (!resources.sa3Server || !(await exists(path.join(resources.sa3Server, 'pyproject.toml')))) {
-        throw new Error('The Stable Audio 3 server sources are missing from this build of the app.');
+      if (!src || !(await exists(path.join(src, 'pyproject.toml')))) {
+        throw new Error(`The ${label} sources are missing from this build of the app.`);
       }
-      await fsp.mkdir(L.stableAudio, { recursive: true });
+      await fsp.mkdir(dest, { recursive: true });
       // the old sources go; the venv and the generated files stay
-      await fsp.rm(path.join(L.stableAudio, 'sa3_server'), { recursive: true, force: true });
-      await fsp.cp(resources.sa3Server, L.stableAudio, { recursive: true, force: true });
-      await withCacheGrowth(L.uvCache, manifest.stableAudio.approxBytes, report, () =>
-        retrying(ctx, report, () => runCommand(L.uvBin, ['sync'], { cwd: L.stableAudio, env: uvEnv(L), onLine: (line) => report({ note: line }), signal: ctx.signal, logFile })));
+      await fsp.rm(path.join(dest, pkg), { recursive: true, force: true });
+      await fsp.cp(src, dest, { recursive: true, force: true });
+      await withCacheGrowth(L.uvCache, weight, report, () =>
+        retrying(ctx, report, () => runCommand(L.uvBin, ['sync'], { cwd: dest, env: uvEnv(L), onLine: (line) => report({ note: line }), signal: ctx.signal, logFile })));
     },
-  };
+  });
+  // Stable Audio 3: the weights are gated on Hugging Face, the app's Models page downloads them.
+  const stableAudio = bundledUvProject({ id: 'stable-audio', weight: manifest.stableAudio.approxBytes, src: resources.sa3Server, dest: L.stableAudio, pkg: 'sa3_server', label: 'Stable Audio 3 server' });
+  // The prompt assistant: its language model comes from the Models page too.
+  const promptAssistant = bundledUvProject({ id: 'prompt-assistant', weight: manifest.promptAssistant.approxBytes, src: resources.promptAssistant, dest: L.promptAssistant, pkg: 'prompt_assistant', label: 'prompt assistant' });
 
   // The common weights plus the YuE2 precisions picked. The version is the package list, so adding a precision later
   // re-runs this step; the downloader skips packages that are already there.
@@ -355,7 +361,7 @@ function buildComponents({ L, manifest, platform, resources, selection }) {
 
   // Order matters: the backend venv provides the Python that runs the weights downloader.
   const left = new Set(excludedComponents(sel));
-  return [uv, ffmpeg, engineStep, backendEnv, aceStep, aceModels, aceBaseModel, aceXlModel, demucs, stableAudio, weights].filter((c) => !left.has(c.id));
+  return [uv, ffmpeg, engineStep, backendEnv, aceStep, aceModels, aceBaseModel, aceXlModel, demucs, stableAudio, promptAssistant, weights].filter((c) => !left.has(c.id));
 }
 
 /** Path of ffmpeg: a pinned build under tools/ffmpeg where there is one, otherwise whatever the system has. */

@@ -25,6 +25,7 @@ function resourcePaths(isPackaged) {
       frontendDist: path.join(base, 'frontend', 'dist'),
       acePatch: path.join(base, 'patches', 'ace-step.patch'),
       sa3Server: path.join(base, 'sa3-server'),
+      promptAssistant: path.join(base, 'prompt-assistant'),
     };
   }
   const root = repoRoot();
@@ -33,6 +34,7 @@ function resourcePaths(isPackaged) {
     frontendDist: path.join(root, 'frontend', 'dist'),
     acePatch: path.join(root, 'external', 'patches', 'ace-step.patch'),
     sa3Server: path.join(root, 'external', 'sa3-server'),
+    promptAssistant: path.join(root, 'external', 'prompt-assistant'),
   };
 }
 
@@ -71,6 +73,7 @@ function layout(root, platform = PLATFORM, manifest = null) {
     yue2Bin: path.join(yue2, 'build', preset, 'bin'),
     demucs: path.join(root, 'engines', 'Demucs'),
     stableAudio: path.join(root, 'engines', 'StableAudio'),
+    promptAssistant: path.join(root, 'engines', 'PromptAssistant'),
     backendVenv,
     backendPython: path.join(backendVenv, IS_WINDOWS ? 'Scripts' : 'bin', IS_WINDOWS ? 'python.exe' : 'python'),
     data: path.join(root, 'data'),

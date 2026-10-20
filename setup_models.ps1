@@ -18,6 +18,10 @@ param(
     # Stable Audio 3 checkpoints to download after the environment: medium, small-music, small-sfx
     # and their -base twins. The first three are gated (licence + Hugging Face token, see below).
     [string[]]$StableAudioModels = @(),
+    [switch]$SkipPromptAssistant,
+    # The prompt assistant's language model to download right away (default: none, the Models page does it),
+    # e.g. -PromptAssistantModel Qwen/Qwen3.5-2B
+    [string]$PromptAssistantModel = "",
     [switch]$SkipBuild,
     [switch]$SkipWeights
 )
@@ -291,6 +295,33 @@ if (-not (Test-Path (Join-Path $stableAudioDir "pyproject.toml"))) {
     }
 } else {
     Write-Host "Skipped sa3-server 'uv sync' - install uv and re-run this script." -ForegroundColor Yellow
+}
+
+Write-Step "Prompt assistant"
+# A local language model that writes each engine's prompt from an idea: the uv project is tracked in the
+# repository (external/prompt-assistant) and runs in place, so only "uv sync" here (the same torch as
+# sa3-server, which uv links from its cache). Its model (Qwen3.5, Apache-2.0) is downloaded from the app's
+# Models page, or here with -PromptAssistantModel Qwen/Qwen3.5-2B.
+$assistantDir = Join-Path $externalDir "prompt-assistant"
+if (-not (Test-Path (Join-Path $assistantDir "pyproject.toml"))) {
+    Write-Host "external/prompt-assistant is missing from this checkout - skipping the prompt assistant." -ForegroundColor Yellow
+} elseif ($SkipPromptAssistant) {
+    Write-Host "Skipped (-SkipPromptAssistant)."
+} elseif (Assert-Command "uv" "Install it from https://docs.astral.sh/uv/getting-started/installation/") {
+    Push-Location $assistantDir
+    try {
+        Write-Host "Running 'uv sync' for the prompt assistant ..."
+        uv sync
+        if ($PromptAssistantModel) {
+            & (Join-Path $assistantDir ".venv\Scripts\python.exe") -m prompt_assistant.download $PromptAssistantModel
+        } else {
+            Write-Host "Its model: download it from the app (Models page), or re-run with -PromptAssistantModel Qwen/Qwen3.5-2B."
+        }
+    } finally {
+        Pop-Location
+    }
+} else {
+    Write-Host "Skipped the prompt assistant's 'uv sync' - install uv and re-run this script." -ForegroundColor Yellow
 }
 
 Write-Step "backend/.env"

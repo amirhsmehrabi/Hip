@@ -53,6 +53,19 @@ fs.cpSync(sa3Src, path.join(out, 'sa3-server'), {
   },
 });
 
+// The prompt assistant: a uv project too; its sources only.
+const assistantSrc = path.join(root, 'external', 'prompt-assistant');
+const ASSISTANT_SOURCES = new Set(['pyproject.toml', 'README.md', 'prompt_assistant']);
+fs.cpSync(assistantSrc, path.join(out, 'prompt-assistant'), {
+  recursive: true,
+  filter: (src) => {
+    const rel = path.relative(assistantSrc, src);
+    if (!rel) return true;
+    if (!ASSISTANT_SOURCES.has(rel.split(path.sep)[0])) return false;
+    return !rel.split(path.sep).includes('__pycache__') && !rel.endsWith('.pyc');
+  },
+});
+
 // Guard: fail the build rather than ship personal data.
 const forbidden = [];
 (function scan(dir) {

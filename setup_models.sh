@@ -328,6 +328,25 @@ else
     echo "Skipped sa3-server 'uv sync' - install uv and re-run this script."
 fi
 
+step "Prompt assistant"
+# A local language model that writes each engine's prompt from an idea (external/prompt-assistant, run in
+# place). Its model is downloaded from the app's Models page, or here with
+# PROMPT_ASSISTANT_MODEL=Qwen/Qwen3.5-2B ./setup_models.sh
+ASSISTANT_DIR="$EXTERNAL_DIR/prompt-assistant"
+if [[ ! -f "$ASSISTANT_DIR/pyproject.toml" ]]; then
+    echo "external/prompt-assistant is missing from this checkout - skipping the prompt assistant."
+elif assert_command uv "Install it from https://docs.astral.sh/uv/getting-started/installation/"; then
+    (
+        cd "$ASSISTANT_DIR"
+        uv sync
+        if [[ -n "${PROMPT_ASSISTANT_MODEL:-}" ]]; then
+            .venv/bin/python -m prompt_assistant.download "$PROMPT_ASSISTANT_MODEL"
+        fi
+    )
+else
+    echo "Skipped the prompt assistant's 'uv sync' - install uv and re-run this script."
+fi
+
 step "backend/.env"
 ENV_FILE="$ROOT/backend/.env"
 FFMPEG_BIN_DIR=$(find_ffmpeg_bin_dir || true)

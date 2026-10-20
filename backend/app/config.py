@@ -76,6 +76,9 @@ DEMUCS_DIR = _env_path("DEMUCS_DIR", r"E:\AI\Demucs")
 # Stable Audio 3: our own small HTTP server (external/sa3-server, a uv project) around
 # Stability's package. Weights live in the Hugging Face cache, see features.has_stable_audio.
 STABLE_AUDIO_DIR = _env_path("STABLE_AUDIO_DIR", r"E:\AI\StableAudio")
+# The prompt assistant: a uv project tracked in the repository, run in place on a source install;
+# the desktop app points this at its own copy.
+PROMPT_ASSISTANT_DIR = _env_path("PROMPT_ASSISTANT_DIR", str(Path(__file__).resolve().parents[2] / "external" / "prompt-assistant"))
 
 # MuScriptor (audio -> MIDI) is loaded into YuE2's own audiocpp_server rather
 # than being launched separately, so it gets no MODELS entry - only the spec
@@ -151,6 +154,7 @@ STABLE_AUDIO_DEVICE = os.getenv("STABLE_AUDIO_DEVICE", "").strip()
 # A second sa3-server on the CPU for the editor's Samples panel (app/sfx_cpu.py): it runs next to whatever
 # engine holds the GPU. Off until switched on in the panel's settings.
 STABLE_AUDIO_CPU_PORT = int(os.getenv("STABLE_AUDIO_CPU_PORT", "8003"))
+PROMPT_ASSISTANT_PORT = int(os.getenv("PROMPT_ASSISTANT_PORT", "8004"))
 # Which Stable Audio 3 checkpoint the server warms up right after it starts (medium needs a
 # CUDA GPU with Flash Attention; small-music / small-sfx run anywhere).
 STABLE_AUDIO_PRELOAD = os.getenv("STABLE_AUDIO_PRELOAD", "medium").strip()

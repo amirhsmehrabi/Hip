@@ -154,6 +154,22 @@ else
   echo "external/sa3-server is missing from this checkout - skipping Stable Audio 3."
 fi
 
+step "Prompt assistant"
+# A local language model that writes each engine's prompt from an idea (external/prompt-assistant, run in
+# place). Its model comes from the app's Models page, or PROMPT_ASSISTANT_MODEL=Qwen/Qwen3.5-2B here.
+ASSISTANT_DIR="$EXTERNAL_DIR/prompt-assistant"
+if [[ -f "$ASSISTANT_DIR/pyproject.toml" ]]; then
+  (
+    cd "$ASSISTANT_DIR"
+    "$UV_BIN" sync
+    if [[ -n "${PROMPT_ASSISTANT_MODEL:-}" ]]; then
+      .venv/bin/python -m prompt_assistant.download "$PROMPT_ASSISTANT_MODEL"
+    fi
+  )
+else
+  echo "external/prompt-assistant is missing from this checkout - skipping the prompt assistant."
+fi
+
 step "Backend environment"
 FFMPEG_BIN_DIR="$(dirname "$(command -v ffmpeg)")"
 CUDA_BIN_DIR="$(dirname "$(command -v "$NVCC_BIN")")"
