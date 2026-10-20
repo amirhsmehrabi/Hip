@@ -36,6 +36,9 @@ export interface AiPartRequest {
   count: number
   /** cover only: 0 = loose style transfer, 1 = keep the original's structure. */
   coverStrength: number
+  /** How much renderContext raised (or lowered) the context to reach its 0.9 peak; the variants are brought back
+   * to the timeline's level from it (variantVolume). Missing on jobs from before it existed: taken as 1. */
+  contextGain?: number
 }
 
 export interface AiPartVariant {
