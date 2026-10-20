@@ -1593,7 +1593,7 @@ export default {
     sending: 'Sending…',
     startingEngine: 'Starting {engine}…',
     engine: 'Generate with:',
-    engineHint: { ace: 'ACE-Step: fast, songs and instrumentals.', yue2: 'YuE2: a whole song with vocals, slower; the assistant writes the style tags and lyrics.', sa3: 'Stable Audio 3: an instrumental in seconds; the assistant follows Stable Audio\'s own instructions.' },
+    engineHint: { ace: 'ACE-Step: fast, songs and instrumentals.', yue2: 'YuE2: a whole song with vocals, slower; the assistant writes the style tags and lyrics.', sa3: 'Stable Audio 3: an instrumental or a sound in seconds; the assistant works out which and follows Stable Audio\'s own instructions.' },
     yue2OnlySongs: 'YuE2 makes songs with vocals only',
     notInstalled: 'Not installed',
     sa3OnlyInstrumentals: 'Stable Audio 3 makes instrumentals only',
@@ -1602,6 +1602,9 @@ export default {
     sa3Prompt: 'Stable Audio 3 prompt',
     sa3PromptHint: 'In the style Stable Audio was trained on: service tags, a description and "BPM: N. Length: N seconds" at the end. The assistant follows Stable Audio\'s own instructions.',
     sa3Model: 'Model',
+    sa3Kind: 'What to make',
+    sa3Music: 'Music',
+    sa3Sound: 'Sound',
     sa3Max: 'up to {max} s',
     needLyrics: 'YuE2 needs the lyrics.',
     styleTags: 'Style tags',
@@ -1626,7 +1629,7 @@ export default {
       engines: [
         { engine: 'ACE-Step 1.5', what: 'A style caption, lyrics in sections, tempo, key and length', kind: 'Songs and instrumentals, fast; 1, 2 or 4 variants' },
         { engine: 'YuE2-3B', what: '5–9 style tags in English and lyrics in sections [Verse], [Chorus], [Bridge], [Outro]', kind: 'Songs with vocals only; the lyrics set the length' },
-        { engine: 'Stable Audio 3', what: 'A prompt in the style the model was trained on, with the tempo and length at the end', kind: 'Instrumentals only; up to 380 s with medium, 120 s with small-music' },
+        { engine: 'Stable Audio 3', what: 'A prompt in the style the model was trained on, with the length at the end; Stable Audio\'s classifier decides whether it is music or a sound', kind: 'Instrumentals and sounds (rain, a hit, footsteps), no vocals; up to 380 s with medium, 120 s with small-music and small-sfx' },
       ],
       writerTitle: 'Who writes the prompt',
       writer: [
@@ -1653,6 +1656,7 @@ export default {
         'Want a particular genre, voice or instruments? Name them in the idea.',
         'Read the lyrics before you generate: a small model does not always get the rhyme and metre right.',
         'Not the sound you wanted? Try another engine on the same idea: the prompt is rewritten in its format.',
+        'Rain, a hit, footsteps are sounds, not music: pick an instrumental and Stable Audio 3, and it works out that a sound is wanted. ACE-Step makes a track from such an idea.',
       ],
       limitsTitle: 'Limits',
       limits: [

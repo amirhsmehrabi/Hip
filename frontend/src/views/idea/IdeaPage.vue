@@ -61,14 +61,26 @@ const ENGINES: { id: Engine; model: 'ace_step' | 'yue2' | 'stable_audio'; route:
   { id: 'yue2', model: 'yue2', route: 'yue2', icon: MicIcon },
   { id: 'sa3', model: 'stable_audio', route: 'stable-audio', icon: PulseIcon },
 ]
-/** Stable Audio's music checkpoints that are downloaded, the better first (small-sfx makes sounds, base ones want CFG). */
-const SA3_MUSIC: { id: Sa3ModelId; max: number }[] = [{ id: 'medium', max: 380 }, { id: 'small-music', max: 120 }]
-const sa3Models = computed(() => SA3_MUSIC.filter((m) => features.features.stable_audio_models.includes(m.id)))
+/** Stable Audio's checkpoints for an idea, the better first for each kind: medium makes music and sounds,
+ *  small-music only music, small-sfx only sounds (the base ones want CFG and 50 steps, so they stay on its page). */
+const SA3_MODELS: { id: Sa3ModelId; max: number; kinds: ('music' | 'sfx')[] }[] = [
+  { id: 'medium', max: 380, kinds: ['music', 'sfx'] },
+  { id: 'small-music', max: 120, kinds: ['music'] },
+  { id: 'small-sfx', max: 120, kinds: ['sfx'] },
+]
+const sa3Installed = computed(() => SA3_MODELS.filter((m) => features.features.stable_audio_models.includes(m.id)))
+/** Music or a sound: as the prompt says, music before there is one. */
+const sa3Kind = computed<'music' | 'sfx'>(() => (draft.value?.engine === 'sa3' && draft.value.sa3Kind) || 'music')
+/** For sounds small-sfx first, it was made for them. */
+const sa3Models = computed(() => {
+  const list = sa3Installed.value.filter((m) => m.kinds.includes(sa3Kind.value))
+  return sa3Kind.value === 'sfx' ? [...list].sort((a, b) => Number(b.id === 'small-sfx') - Number(a.id === 'small-sfx')) : list
+})
 const engineInfo = computed(() => ENGINES.find((e) => e.id === engine.value)!)
 /** Installed, and able to make this kind: YuE2 sings, it makes no instrumentals. */
 function engineAvailable(id: Engine): boolean {
   if (id === 'yue2') return features.has('yue2') && !instrumental.value
-  if (id === 'sa3') return features.has('stableAudio') && instrumental.value && sa3Models.value.length > 0
+  if (id === 'sa3') return features.has('stableAudio') && instrumental.value && sa3Installed.value.length > 0
   return true
 }
 function unavailableReason(id: Engine): string {
@@ -141,14 +153,17 @@ async function write() {
   const base = { bpm: null, keyscale: '', duration: 120, timesignature: '', language: instrumental.value ? '' : effectiveLanguage.value }
   try {
     if (engine.value === 'sa3') {
-      // the kind is known (an instrumental): Stable Audio's "Music" instructions, no classifier
-      const f = await byAssistant('sa3', { kind: 'music' })
-      const max = sa3Models.value.find((m) => m.id === sa3Model.value)?.max ?? 120
-      const dur = typeof f.duration === 'number' ? f.duration : 60
+      // Stable Audio's own classifier reads the idea first: "rain noise" is a sound, not a track, and gets its
+      // SFX instructions (a solo instrument and a one-shot get theirs too)
+      const f = await byAssistant('sa3', {})
+      const kindOf: 'music' | 'sfx' = f.category === 'sfx' || f.category === 'one_shot' ? 'sfx' : 'music'
+      const fits = sa3Installed.value.filter((m) => m.kinds.includes(kindOf))
+      const max = (fits.find((m) => m.id === sa3Model.value) ?? fits[0])?.max ?? 120
+      const dur = typeof f.duration === 'number' ? f.duration : kindOf === 'sfx' ? 10 : 60
       draft.value = {
-        ...base, engine: 'sa3', caption: String(f.prompt ?? ''), lyrics: '',
+        ...base, engine: 'sa3', caption: String(f.prompt ?? ''), lyrics: '', sa3Kind: kindOf,
         bpm: typeof f.bpm === 'number' ? f.bpm : null,
-        duration: Math.max(5, Math.min(max, Math.round(dur))), writtenBy: 'assistant', seconds: seconds(),
+        duration: Math.max(kindOf === 'sfx' ? 0.5 : 5, Math.min(max, Math.round(dur))), writtenBy: 'assistant', seconds: seconds(),
       }
     } else if (engine.value === 'yue2') {
       const f = await byAssistant('yue2-song', { language: effectiveLanguage.value })
@@ -202,6 +217,23 @@ const durationLabel = computed(() => {
 // ---- generate ----
 const variantOptions = [1, 2, 4].map((n) => ({ value: n, label: String(n) }))
 watch(sa3Models, (list) => { if (list.length && !list.some((m) => m.id === sa3Model.value)) sa3Model.value = list[0].id }, { immediate: true })
+// music and sounds have their own best checkpoint: a change of kind picks it
+watch(sa3Kind, () => { if (sa3Models.value.length) sa3Model.value = sa3Models.value[0].id })
+const sa3KindOptions = computed(() => [
+  { value: 'music', label: t('idea.sa3Music') },
+  { value: 'sfx', label: t('idea.sa3Sound') },
+])
+/** The service tag the assistant put first, per kind (Stable Audio's TRACK_TYPE_PREFIXES). */
+const SA3_PREFIX = { music: 'TrackType: Music, VocalType: Instrumental, ', sfx: 'TrackType: SFX, ' } as const
+function setSa3Kind(value: unknown) {
+  const next = value === 'sfx' ? 'sfx' : 'music'
+  const d = draft.value
+  if (!d || d.engine !== 'sa3' || (d.sa3Kind ?? 'music') === next) return
+  const from = SA3_PREFIX[d.sa3Kind ?? 'music']
+  if (d.caption.startsWith(from)) d.caption = SA3_PREFIX[next] + d.caption.slice(from.length)
+  d.sa3Kind = next
+  if (next === 'music' && d.duration < 5) d.duration = 30
+}
 const sa3Max = computed(() => sa3Models.value.find((m) => m.id === sa3Model.value)?.max ?? 120)
 watch(yue2Precisions, (list) => { if (list.length && !list.includes(precision.value)) precision.value = list[0] }, { immediate: true })
 const starting = ref(false)
@@ -248,8 +280,8 @@ async function generate() {
     if (!engineRunning(d.engine)) await orchestrator.switchModel(info.model)
     if (d.engine === 'sa3') {
       await sa3.generate({
-        kind: 'music', model: sa3Model.value, prompt: d.caption.trim(), caption: idea.value.trim(), autoTags: false,
-        negativePrompt: '', duration: Math.max(5, Math.min(sa3Max.value, Math.round(d.duration))),
+        kind: d.sa3Kind ?? 'music', model: sa3Model.value, prompt: d.caption.trim(), caption: idea.value.trim(), autoTags: false,
+        negativePrompt: '', duration: Math.max(d.sa3Kind === 'sfx' ? 0.5 : 5, Math.min(sa3Max.value, d.duration)),
         steps: 8, cfgScale: 1, seed: -1, count: variants.value, title: titleOf(idea.value || d.caption),
       })
     } else if (d.engine === 'yue2') {
@@ -287,7 +319,7 @@ async function openInForm() {
     return
   }
   if (d.engine === 'sa3') {
-    sa3.requestInsertParams({ kind: 'music', model: sa3Model.value, prompt: d.caption, duration: Math.min(sa3Max.value, Math.round(d.duration)) })
+    sa3.requestInsertParams({ kind: d.sa3Kind ?? 'music', model: sa3Model.value, prompt: d.caption, duration: Math.min(sa3Max.value, Math.round(d.duration)) })
     await router.push({ name: 'stable-audio' })
     return
   }
@@ -468,6 +500,11 @@ const guideOpen = ref(false)
         </div>
         <!-- Stable Audio 3: the checkpoint and the length (its own limit per checkpoint) -->
         <div v-else-if="draft.engine === 'sa3'" class="grid gap-3 sm:grid-cols-3">
+          <!-- music or a sound, as the classifier read the idea; switching it swaps the prompt's service tag -->
+          <div class="flex flex-col gap-1 text-xs">
+            <span class="font-medium text-text">{{ t('idea.sa3Kind') }}</span>
+            <ChipGroup :model-value="sa3Kind" small :options="sa3KindOptions" @update:model-value="setSa3Kind" />
+          </div>
           <label class="flex flex-col gap-1 text-xs">
             <span class="font-medium text-text">{{ t('idea.sa3Model') }}</span>
             <select v-model="sa3Model" class="rounded-lg border border-border bg-panel-2 px-2.5 py-2 text-sm text-text focus:border-accent1 focus:outline-none">
@@ -476,7 +513,7 @@ const guideOpen = ref(false)
           </label>
           <label class="flex flex-col gap-1 text-xs">
             <span class="font-medium text-text">{{ t('idea.duration', { label: durationLabel }) }}</span>
-            <input v-model.number="draft.duration" type="number" min="5" :max="sa3Max" step="5" class="rounded-lg border border-border bg-panel-2 px-2.5 py-2 text-sm text-text focus:border-accent1 focus:outline-none" />
+            <input v-model.number="draft.duration" type="number" :min="sa3Kind === 'sfx' ? 0.5 : 5" :max="sa3Max" :step="sa3Kind === 'sfx' ? 0.5 : 5" class="rounded-lg border border-border bg-panel-2 px-2.5 py-2 text-sm text-text focus:border-accent1 focus:outline-none" />
             <span class="text-text-dim">{{ t('idea.sa3Max', { max: sa3Max }) }}</span>
           </label>
         </div>
