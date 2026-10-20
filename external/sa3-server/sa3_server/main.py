@@ -44,7 +44,9 @@ def build_app(engine: Engine, preload: str | None) -> FastAPI:
     @app.on_event("startup")
     def _startup() -> None:
         jobs.start()
-        if preload and installed_models().get(preload):
+        # medium needs CUDA: on a Mac or a CPU it is not warmed up (and not offered, see /v1/models)
+        runnable = preload in MODEL_SPECS and (engine.device_name() == "cuda" or not MODEL_SPECS[preload]["gpu_only"])
+        if preload and runnable and installed_models().get(preload):
             threading.Thread(target=_safe_load, args=(engine, preload), name="sa3-preload", daemon=True).start()
 
     @app.on_event("shutdown")
@@ -75,7 +77,8 @@ def build_app(engine: Engine, preload: str | None) -> FastAPI:
                 "installed": found[name] is not None,
                 "loaded": name in loaded,
                 "loading": engine.loading() == name,
-                "available": found[name] is not None and (device != "cpu" or not spec["gpu_only"]),
+                # medium wants CUDA with Flash Attention; on a Mac (mps) or a CPU only the small ones are offered
+                "available": found[name] is not None and (device == "cuda" or not spec["gpu_only"]),
                 "device": device,
             })
         return out
