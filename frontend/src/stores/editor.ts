@@ -229,12 +229,13 @@ export const useEditorStore = defineStore('editor', {
       return lane
     },
     /** Adds several lanes in one undo step (the variants of an AI part). Returns their ids. */
-    insertLanes(specs: { name: string; colorId?: string; muted?: boolean; clips: Clip[] }[]): string[] {
+    insertLanes(specs: { name: string; colorId?: string; muted?: boolean; volume?: number; clips: Clip[] }[]): string[] {
       const ids: string[] = []
       for (const spec of specs) {
         const lane = newLane(spec.name)
         if (spec.colorId) lane.colorId = spec.colorId
         lane.settings.muted = !!spec.muted
+        if (spec.volume != null) lane.settings.volume = spec.volume
         lane.clips.push(...spec.clips)
         this.project.lanes.push(lane)
         ids.push(lane.id)

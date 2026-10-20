@@ -60,12 +60,20 @@ export function parseModelKey(key: string): { engine: AiEngine; model: string } 
   return { engine: AI_ENGINES.includes(engine) ? engine : 'ace', model: i > 0 ? key.slice(i + 1) : key }
 }
 
+/** The mixed context and the gain applied to bring its peak to 0.9 (1 when it was silent). */
+export interface RenderedContext {
+  buffer: AudioBuffer
+  gain: number
+}
+
 /**
  * Mixes the chosen lanes between `start` and `end` into the audio the model hears as context.
  * Mixed straight from the clip buffers (lane volume, clip fades and warp as the engine plays them),
  * not through the effect graph: its compressors and limiter delay the signal by ~18 ms, and the model
  * writes its part in time with what it hears, so a delayed context would put the part late.
  * Lane mute/solo is ignored (the user picked the lanes explicitly); effects are left out.
+ * The mix is normalised to a 0.9 peak so a quiet selection reaches the model at a usable level; the returned
+ * `gain` lets the result be brought back to the timeline's level (variantVolume).
  */
 export function renderContext(
   project: TimelineProject,
@@ -73,7 +81,7 @@ export function renderContext(
   laneIds: string[],
   start: number,
   end: number,
-): AudioBuffer {
+): RenderedContext {
   const sampleRate = getSharedAudioCtx().sampleRate
   const frames = Math.max(1, Math.round((end - start) * sampleRate))
   const out = new AudioBuffer({ numberOfChannels: 2, length: frames, sampleRate })
@@ -114,14 +122,66 @@ export function renderContext(
   // A quiet selection (e.g. a fade) still reaches the model at a usable level.
   let peak = 0
   for (let i = 0; i < frames; i++) peak = Math.max(peak, Math.abs(outL[i]), Math.abs(outR[i]))
+  let gain = 1
   if (peak > 1e-4) {
-    const g = 0.9 / peak
+    gain = 0.9 / peak
     for (let i = 0; i < frames; i++) {
-      outL[i] *= g
-      outR[i] *= g
+      outL[i] *= gain
+      outR[i] *= gain
     }
   }
-  return out
+  return { buffer: out, gain }
+}
+
+/** RMS of both channels between two times (seconds from the buffer start); null when the span is empty. */
+function spanRms(b: AudioBuffer, from: number, to: number): number | null {
+  const i0 = Math.max(0, Math.floor(from * b.sampleRate))
+  const i1 = Math.min(b.length, Math.floor(to * b.sampleRate))
+  if (i1 - i0 < b.sampleRate * 0.25) return null
+  let sum = 0
+  for (let c = 0; c < b.numberOfChannels; c++) {
+    const d = b.getChannelData(c)
+    for (let i = i0; i < i1; i++) sum += d[i] * d[i]
+  }
+  return Math.sqrt(sum / ((i1 - i0) * b.numberOfChannels))
+}
+
+/** Lane volume limits for a variant: below that it is a level bug rather than a match. */
+const MIN_VARIANT_VOLUME = 0.02
+const MAX_VARIANT_VOLUME = 4
+
+/**
+ * The lane volume that puts a variant back at the level of the timeline it replaces. The model heard the
+ * context normalised by `contextGain`, so its output sits that much louder (or quieter) than the original.
+ * Repaint and continue return the audio outside the range almost as it was: when the context is at hand,
+ * the level is measured there, which also covers an engine that levels its own output. Otherwise (cover,
+ * a new part, a job finished after a reload) the normalisation is undone: 1 / contextGain.
+ * `ctxStart` and the spans are timeline seconds; the variant and the context both start at `ctxStart`.
+ */
+export function variantVolume(
+  r: { mode: AiMode; ctxStart: number; ctxEnd: number; regionStart: number; regionEnd: number; contextGain?: number },
+  variant: AudioBuffer,
+  context: AudioBuffer | null,
+): number {
+  const gain = r.contextGain && r.contextGain > 0 ? r.contextGain : 1
+  let volume = 1 / gain
+  if (context && (r.mode === 'repaint' || r.mode === 'continue')) {
+    // Keep clear of the seams: the engines blend a little into the untouched audio.
+    const spans: [number, number][] = [[0, r.regionStart - r.ctxStart - 0.3]]
+    if (r.mode === 'repaint') spans.push([r.regionEnd - r.ctxStart + 0.3, r.ctxEnd - r.ctxStart])
+    let ctxSq = 0
+    let varSq = 0
+    for (const [a, b] of spans) {
+      const c = spanRms(context, a, b)
+      const v = spanRms(variant, a, b)
+      if (c == null || v == null) continue
+      ctxSq += c * c * (b - a)
+      varSq += v * v * (b - a)
+    }
+    // ctx = gain * original and variant = k * ctx outside the range, so original / variant = ctx / (variant * gain).
+    if (ctxSq > 1e-10 && varSq > 1e-10) volume = Math.sqrt(ctxSq / varSq) / gain
+  }
+  return Math.min(MAX_VARIANT_VOLUME, Math.max(MIN_VARIANT_VOLUME, volume))
 }
 
 export function audioBufferToWavFile(buffer: AudioBuffer, name: string): File {

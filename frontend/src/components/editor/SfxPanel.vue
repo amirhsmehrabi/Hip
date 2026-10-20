@@ -189,7 +189,7 @@ async function generate() {
     if (listen.value && !('error' in listenSpan.value)) {
       const { start, end } = listenSpan.value
       reference = { laneIds: [...listenIds.value], start, end, closeness: closeness.value }
-      audio = audioBufferToWavFile(renderContext(store.project, props.buffers, listenIds.value, start, end), 'reference.wav')
+      audio = audioBufferToWavFile(renderContext(store.project, props.buffers, listenIds.value, start, end).buffer, 'reference.wav')
     }
     await sfxStore.submit({
       kind: kind.value, caption, model: model.value, duration: duration.value, bpm: bpm.value, bars: loopBars.value, count: count.value,

@@ -15,7 +15,7 @@ import { shortLaneNames } from '../../utils/laneNames'
 import { TRACK_COLORS } from '../../utils/trackColors'
 import {
   AI_MODE_TASK, AI_MODES, AI_TRACK_COLOR, AI_TRACKS, COPY_THRESHOLD, ENGINE_MAX_CONTEXT_SEC, ENGINE_MODEL_ID, ENGINE_MODES,
-  KEY_SCALES, SA3_ARRANGER_MODELS, VOCAL_TRACKS, audioBufferToWavFile, correlationWithContext, modelKey, parseModelKey, renderContext,
+  KEY_SCALES, SA3_ARRANGER_MODELS, VOCAL_TRACKS, audioBufferToWavFile, correlationWithContext, modelKey, parseModelKey, renderContext, variantVolume,
 } from '../../utils/aiParts'
 import type { AiEngine, AiMode, AiTrack } from '../../utils/aiParts'
 import { MODEL_LABELS } from '../../composables/useModelSwitch'
@@ -304,7 +304,7 @@ function fmt(sec: number): string {
 }
 
 // ---- Generate ----
-/** Context audio per lego job, kept for the copy check when the variants arrive. */
+/** Context audio per job, kept for the lego copy check and the repaint / continue level match. */
 const contexts = new Map<string, AudioBuffer>()
 const canGenerate = computed(() => engineRunning.value && !preparing.value && !spanError.value
   && (engine.value === 'sa3' ? !!sa3Models[mode.value] : !baseNotInstalled.value && !!models[mode.value])
@@ -332,7 +332,7 @@ async function generate() {
   }
   preparing.value = true
   try {
-    const ctx = renderContext(store.project, props.buffers, listenIds.value, sp.ctxStart, sp.ctxEnd)
+    const { buffer: ctx, gain: contextGain } = renderContext(store.project, props.buffers, listenIds.value, sp.ctxStart, sp.ctxEnd)
     const m = mode.value
     const job = await aiStore.submit(
       {
@@ -349,11 +349,12 @@ async function generate() {
         bpm: store.project.bpm || 120,
         count: count.value,
         coverStrength: coverStrength.value,
+        contextGain,
       },
       audioBufferToWavFile(ctx, 'context.wav'),
       store.session,
     )
-    if (m === 'lego') contexts.set(job.id, ctx)
+    if (m !== 'cover') contexts.set(job.id, ctx)
   } catch (e) {
     formError.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -367,6 +368,7 @@ watch(
   () => {
     for (const job of aiStore.jobs) {
       if (job.status === 'done' && !job.inserted && job.session === store.session) void insertVariants(job)
+      else if (job.status === 'failed' || job.status === 'cancelled') contexts.delete(job.id)
     }
   },
 )
@@ -425,7 +427,9 @@ async function insertVariants(job: AiPartJob) {
   const ids = store.insertLanes(job.variants.map((v, i) => {
     const name = `${label} · ${t('aiPart.variantShort', { n: i + 1 })}`
     const buf = decoded[i]
-    return { name, colorId: color, muted: i !== audible, clips: buf ? [variantClip(r, v.url, name, buf)] : [] }
+    // The model heard the context normalised: the lane volume brings the variant back to the original's level.
+    const volume = buf ? Math.round(variantVolume(r, buf, ctx ?? null) * 100) / 100 : undefined
+    return { name, colorId: color, muted: i !== audible, volume, clips: buf ? [variantClip(r, v.url, name, buf)] : [] }
   }))
   ids.forEach((id, i) => { job.variants[i].laneId = id })
 }
