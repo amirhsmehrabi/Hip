@@ -58,11 +58,12 @@ export const VOCAL_LANGUAGES: { code: string; label: string }[] = [
 /**
  * The language of a lyrics text, read from its letters. ACE-Step's release_task assumes English when no
  * vocal_language is sent, and Russian words are then sung as English. Structure tags ([Verse]) and
- * performance marks ((whisper)) are skipped. Latin letters count as English: other Latin-script languages
- * have to be picked by hand.
+ * performance marks ((whisper)) are skipped. Latin letters count as English, except Hungarian's ő and ű: other
+ * Latin-script languages have to be picked by hand.
  */
 export function guessVocalLanguage(lyrics: string): string {
   const words = lyrics.replace(/\[[^\]]*\]/g, ' ').replace(/\([^)]*\)/g, ' ')
+  if (/[őűŐŰ]/.test(words)) return 'hu'
   if (/[іїєґІЇЄҐ]/.test(words)) return 'uk'
   if (/[а-яёА-ЯЁ]/.test(words)) return 'ru'
   if (/[\uac00-\ud7af]/.test(words)) return 'ko'

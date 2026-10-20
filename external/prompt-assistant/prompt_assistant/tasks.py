@@ -18,9 +18,17 @@ from .sa3_prompts import SYSTEM_PROMPTS, TRACK_TYPE_PREFIXES
 
 Generate = Callable[[str, str, int, float, "int | None"], "tuple[str, int]"]
 
+# Every vocal language the app offers (frontend/src/utils/vocalLanguages.ts); a code missing here is ignored.
 LANGUAGES = {
-    "ru": "Russian", "en": "English", "uk": "Ukrainian", "de": "German", "fr": "French", "es": "Spanish",
-    "it": "Italian", "pt": "Portuguese", "pl": "Polish", "ja": "Japanese", "ko": "Korean", "zh": "Chinese",
+    "en": "English", "ru": "Russian", "zh": "Chinese", "ja": "Japanese", "ko": "Korean", "es": "Spanish",
+    "fr": "French", "de": "German", "it": "Italian", "pt": "Portuguese", "nl": "Dutch", "pl": "Polish",
+    "uk": "Ukrainian", "cs": "Czech", "sk": "Slovak", "ro": "Romanian", "hu": "Hungarian", "bg": "Bulgarian",
+    "sr": "Serbian", "hr": "Croatian", "sv": "Swedish", "no": "Norwegian", "da": "Danish", "fi": "Finnish",
+    "is": "Icelandic", "el": "Greek", "tr": "Turkish", "he": "Hebrew", "ar": "Arabic", "fa": "Persian",
+    "ur": "Urdu", "hi": "Hindi", "bn": "Bengali", "pa": "Punjabi", "ta": "Tamil", "te": "Telugu",
+    "ne": "Nepali", "sa": "Sanskrit", "th": "Thai", "vi": "Vietnamese", "id": "Indonesian", "ms": "Malay",
+    "tl": "Tagalog", "sw": "Swahili", "az": "Azerbaijani", "lt": "Lithuanian", "ca": "Catalan",
+    "ht": "Haitian Creole", "la": "Latin", "yue": "Cantonese",
 }
 
 
@@ -153,6 +161,8 @@ ACE = """You write prompts for ACE-Step, a music generation model. Answer with o
 ACE_SONG_LYRICS = "the song in {lang} with section labels on their own lines: [Verse], [Chorus], [Bridge], [Outro]; short rhyming lines"
 ACE_INSTRUMENTAL_LYRICS = "[Instrumental]"
 ACE_INSTRUMENTAL_NOTE = "\nThis is an instrumental: the caption names no voice or vocals and ends with \"instrumental\"."
+# without it a small model writes the caption in the language of the lyrics too
+ACE_SONG_NOTE = "\nThe lyrics must be in {lang}; only the caption is in English."
 
 
 def ace(generate: Generate, idea: str, instrumental: bool, language: str | None = None, seed: int | None = None) -> dict[str, Any]:
@@ -160,7 +170,8 @@ def ace(generate: Generate, idea: str, instrumental: bool, language: str | None 
     rule = ACE_INSTRUMENTAL_LYRICS if instrumental else ACE_SONG_LYRICS.replace("{lang}", lang)
     last: Exception | None = None
     for attempt in range(2):
-        system = ACE.replace("{lyrics_rule}", rule) + (ACE_INSTRUMENTAL_NOTE if instrumental else "")
+        system = ACE.replace("{lyrics_rule}", rule) + (
+            ACE_INSTRUMENTAL_NOTE if instrumental else ACE_SONG_NOTE.replace("{lang}", lang))
         reply, _ = generate(system, idea, 120 if instrumental else 900, 0.8,
                             None if seed is None else seed + attempt)
         try:
@@ -168,6 +179,9 @@ def ace(generate: Generate, idea: str, instrumental: bool, language: str | None 
             caption = str(data.get("caption", "")).strip()
             if not caption:
                 raise TaskError("the reply has no caption")
+            if attempt == 0 and not _latin(caption):
+                last = TaskError("the caption is not in English")
+                continue
             return {
                 "caption": caption,
                 "lyrics": "[Instrumental]" if instrumental else clean_lyrics(str(data.get("lyrics", ""))),
@@ -179,6 +193,11 @@ def ace(generate: Generate, idea: str, instrumental: bool, language: str | None 
         except TaskError as exc:
             last = exc
     raise TaskError(str(last))
+
+
+def _latin(text: str) -> bool:
+    """No letters beyond plain a-z: a caption the model wrote in the lyrics' language has some (gitár, гитара)."""
+    return not re.search(r"[^\W\d_a-zA-Z]", text)
 
 
 def _int(v: Any) -> int | None:
