@@ -177,7 +177,7 @@ async function onSelect(id: ModelId) {
 
         <!-- the engines as one group: a light tells whether each runs, a click opens its page and starts it on the
              GPU (the running one stops). What each is for and its state are in the tooltip. -->
-        <div role="group" :aria-label="t('header.engines')" class="mx-1 flex shrink-0 items-center gap-0.5 self-center rounded-xl border border-border bg-panel-2/40 p-1">
+        <div role="group" :aria-label="t('header.engines')" class="mx-3 flex shrink-0 lg:mx-2 xl:mx-5 2xl:mx-7 items-center gap-0.5 self-center rounded-xl border border-border bg-panel-2/40 p-1">
           <button
             v-for="engine in ENGINES"
             :key="engine.id"
