@@ -1,6 +1,6 @@
 # RFC 0001 — Stable Audio 3 в Remiqora
 
-Статус: принят; фазы 1 и 2 реализованы в ветке `feat/stable-audio-3` (сервер `external/sa3-server`, движок в оркестраторе, страница Stable Audio 3, выбор «движок · модель» в аранжировщике). Фаза 3 (панель «Сэмплы») тоже реализована. Фаза 4 (скачивание весов из приложения, desktop-установщик) впереди.
+Статус: принят; фазы 1 и 2 реализованы в ветке `feat/stable-audio-3` (сервер `external/sa3-server`, движок в оркестраторе, страница Stable Audio 3, выбор «движок · модель» в аранжировщике). Фаза 3 (панель «Сэмплы») тоже реализована. Фаза 4 (скачивание весов из приложения, setup-скрипты, desktop-установщик, README) реализована с отступлениями от раздела 8, они описаны там же.
 
 ## 1. Зачем
 
@@ -270,6 +270,18 @@ export const ENGINE_MODEL_ID: Record<AiEngine, ModelId> = { ace: 'ace_step', sa3
 - Веса не качаются скриптом автоматически (gated). Сценарий: пользователь принимает условия на трёх страницах `stabilityai/stable-audio-3-{medium,small-music,small-sfx}`, выполняет `uvx --from huggingface_hub hf auth login`, затем в приложении компонент `NotInstalled` для `stableAudio` показывает кнопку «Скачать medium (10.5 ГБ)» / «small-sfx (3.5 ГБ)». Скачивание делает **сервер** (`POST /v1/models/download {model}` → `huggingface_hub.snapshot_download` с токеном из кэша, прогресс в `GET /v1/models`), по образцу кнопки «Download Prompt Assistant». Если токена нет, сервер отвечает 401 с текстом инструкции, фронтенд показывает ссылки.
 - Desktop: компонент `stable-audio` в `components.js` (uv sync сервера, без весов), фича `stableAudio` в `features.js`, `main.js`, `paths.js` (`engines/StableAudio`), `server.js` (`STABLE_AUDIO_DIR`), `manifest.json`, `renderer/app.js` + `i18n.js`, тест `features.test.js`.
 - README/README.ru: разделы «What's inside», «AI arranger», «Built with» (Stability AI Community License + Gemma Terms, ссылка на условия), «Installation», «Known limitations» (gated weights, instrumental only, 380 с).
+
+### 8.1 Как сделано в фазе 4 (отступления от плана выше)
+
+- Качает не GPU-движок, а бэкенд: `backend/app/sa3_weights.py` запускает `python -m sa3_server.download <model> --json` из окружения sa3-server фоновым процессом и читает из него события JSON. Причина: для скачивания через сервер пришлось бы запускать Stable Audio 3, то есть выгружать работающий движок. API: `GET /api/sa3-weights`, `POST /api/sa3-weights/{model}/download`, `POST /api/sa3-weights/{model}/cancel`, `POST /api/sa3-weights/token`. Одно скачивание за раз.
+- Токен вводится в приложении (`--login` проверяет его через `whoami` и сохраняет в `HF_HOME/token`), так что консоль не нужна вообще, в том числе для `hf auth login`. Без токена или с неверным токеном загрузчик отвечает кодом `login`, без принятой лицензии кодом `access`; страница показывает, что сделать.
+- Компонент `Sa3Weights.vue` стоит на странице Stable Audio 3: вместо страницы, пока не скачано ни одной модели, и в раскрывающемся блоке «Модели» после. Стор `sa3Weights` следит за скачиванием на любой странице и обновляет `features`, когда модель появилась. Панель «Сэмплы» без моделей ведёт на эту страницу.
+- Модель считается скачанной, когда в снапшоте есть и `model.safetensors`, и текстовый энкодер `t5gemma-b-b-ul2/model.safetensors` (каждый репозиторий несёт свою копию). Не качаются картинка карточки и `svd_bases.pt` base-репозиториев (нужен только обучению LoRA).
+- huggingface_hub 2.x не докачивает файл с середины: каждый процесс пишет во временный файл с уникальным именем. Поэтому остановка сохраняет готовые файлы, а недокачанный начинается заново; его временный файл удаляется сразу после остановки и при следующем запуске.
+- Base-чекпойнты открыты (не gated), основные три закрыты с автоматическим одобрением.
+- setup-скрипты качают веса только по явной просьбе: `-StableAudioModels` (ps1), `--stable-audio-models=` (macOS), `STABLE_AUDIO_MODELS` (Linux).
+- Desktop: фича `stableAudio` (по умолчанию выключена), компонент `stable-audio` копирует исходники сервера из ресурсов приложения в `engines/StableAudio` и делает `uv sync`; версия компонента = хеш исходников. Зависимость `stable-audio-3` взята архивом коммита вместо `git+https`, потому что на машинах пользователей десктопа обычно нет git.
+- На Mac (MPS) и на CPU `medium` не предлагается и не прогревается: ему нужны CUDA и Flash Attention.
 
 ## 9. Фазы
 

@@ -177,7 +177,7 @@ Every run gives 2–4 variants, each on its own lane next to the source, so you 
 
 ### Samples
 
-The **Samples** button next to the arranger makes sounds rather than parts: a **one-shot** (a kick, a hit, a whoosh), a **loop** of 1–8 bars at the project tempo, or a **texture** (rain, a crowd, a drone), from a short description in the style of a sample library. Results line up in a strip: listen first, then add the one you like to a new track or to the selected track at the playhead (or at the loop start). Loops are cut to whole bars, but the model does not guarantee a seamless join, so check them on repeat. Sounds you never placed leave the library when the job is dismissed; the ones you did are kept under the library's *Samples* filter. Needs Stable Audio 3 (the `small-sfx` checkpoint is the sound model; `medium` does sounds too). Two options help the raw output: *Trim leading silence* for one-shots (the clip starts on the attack) and *Seamless join* for loops (a 30 ms crossfade of the tail into the head, saved as its own library file).
+The **Samples** button next to the arranger makes sounds rather than parts: a **one-shot** (a kick, a hit, a whoosh), a **loop** of 1–8 bars at the project tempo, or a **texture** (rain, a crowd, a drone), from a short description in the style of a sample library. Results line up in a strip: listen first, then add the one you like to a new track or to the selected track at the playhead (or at the loop start). Loops are cut to whole bars, but the model does not guarantee a seamless join, so check them on repeat. Dismissing a job deletes its sounds from the library and the disk, except those a track still plays; those stay under the library's *Samples* filter. Needs Stable Audio 3 (the `small-sfx` checkpoint is the sound model; `medium` does sounds too). Two options help the raw output: *Trim leading silence* for one-shots (the clip starts on the attack) and *Seamless join* for loops (a 30 ms crossfade of the tail into the head, saved as its own library file).
 
 On the Stable Audio 3 page itself: a description per variant (an A/B of two prompts in one run), automatic service tags (`TrackType: Music, VocalType: Instrumental` or `TrackType: SFX`, unless you typed a TrackType tag), several ranges to redo in one repaint, and the base checkpoints (`medium-base` and the small ones) when they are downloaded, with 50 steps, CFG 7 and a working negative prompt.
 
@@ -241,6 +241,7 @@ For anyone who would rather not use a terminal, Remiqora also comes as a **deskt
 - **First launch.** The app checks the GPU, driver, free disk space and connection, lets you choose one folder for models and projects, and asks what to install. ACE-Step with the editor is always installed (about 18 GB: ACE-Step, its turbo model, FFmpeg and the Python environments). Everything else is a checkbox with its size:
   - **YuE2** (about 8.5 GB): the audio.cpp engine (CUDA on Windows, Metal on macOS), YuE2, SheetSage2 and MuScriptor. Its precision is a choice too — `q8_0` sounds better and needs about 9 GB of video memory, `q4_0` (2.7 GB) is for cards with 8 GB or less and is picked by default on such a card;
   - **Stem separation** (Demucs, about 4.5 GB);
+  - **Stable Audio 3** (about 4.5 GB, off by default): its Python environment. A model (3.5 GB for a small one, 10.4 GB for `medium`) is downloaded afterwards on its page in the app, since the weights are gated on Hugging Face;
   - **ACE-Step base model** (about 4.8 GB) for adding parts with the AI arranger;
   - **ACE-Step XL base model** (about 20 GB), off by default, with a warning when the card has less than 16 GB.
 
@@ -307,7 +308,7 @@ The script:
 3. Runs `uv sync` for ACE-Step and builds `audiocpp_server` (CUDA release,
    `yue2,sheetsage2,muscriptor` models) for audio.cpp.
 4. Sets up `external/sa3-server`, our HTTP server around Stable Audio 3 (`uv sync`; the
-   weights are *not* downloaded here, see below).
+   weights are downloaded only with `-StableAudioModels`, see below).
 5. Downloads the YuE2/SheetSage2/MuScriptor GGUF weights (~10 GB) via
    audio.cpp's `tools/model_manager_v2.py`.
 6. Sets up a `demucs` uv project in `external/Demucs` for stem separation,
@@ -321,6 +322,8 @@ The script:
 ACE-Step's own weights don't need a separate download — `acestep-api` pulls
 them from HuggingFace/ModelScope on first request, the same way its Gradio
 UI does.
+
+**Stable Audio 3 weights** are downloaded in the app. The Stable Audio 3 page lists the six checkpoints with their sizes, a *Download* button and the progress; a download can be stopped (finished files are kept, the file it was on starts over next time) and keeps running while you use other pages. `medium`, `small-music` and `small-sfx` are gated on Hugging Face: sign in there, press *Agree* on the model page, create a token with the *Read* role and paste it on the same page (it is saved to the Hugging Face cache, as `hf auth login` would). The `-base` checkpoints are open. Without the app: `setup_models.bat -StableAudioModels small-sfx,medium` (macOS: `--stable-audio-models=small-music,small-sfx`, Linux: `STABLE_AUDIO_MODELS="medium small-sfx"`), or `python -m sa3_server.download medium` with `external/sa3-server`'s own Python.
 
 The script is idempotent — safe to re-run (the `-SkipBuild` / `-SkipWeights`
 flags skip the corresponding steps). It expects `git`,
@@ -377,7 +380,7 @@ tag instead, so it doesn't drift on its own.
 ```
 Builds audio.cpp with its native Linux CUDA backend, installs ACE-Step and Demucs in isolated environments, downloads the model weights, and writes `backend/.env`. It expects git, Python 3.11/3.12, uv, Node.js 20.19+ (or 22.12+), npm, CMake, ffmpeg, and a CUDA toolkit with nvcc plus cuBLAS/cuFFT development headers. The NVIDIA driver is deliberately not installed or modified.
 
-Tool paths are overrideable (`UV_BIN`, `NODE_BIN`, `NPM_BIN`, `CMAKE_BIN`, `NVCC_BIN`, `CUDA_TOOLKIT_PREFIX`, `CUDA_LIB_DIR`). On multi-GPU hosts, `ACE_STEP_DEVICE=0 YUE2_DEVICE=1 ./setup_linux.sh` pins the engines separately and enables concurrent model residency when the two explicit device values differ; leave either value unset (or set both to the same device) to retain the default exclusive switching behavior. Validated end-to-end on Ubuntu 24.04 x86_64 with NVIDIA CUDA.
+Tool paths are overrideable (`UV_BIN`, `NODE_BIN`, `NPM_BIN`, `CMAKE_BIN`, `NVCC_BIN`, `CUDA_TOOLKIT_PREFIX`, `CUDA_LIB_DIR`); `STABLE_AUDIO_MODELS="medium small-sfx"` also downloads those Stable Audio 3 checkpoints. On multi-GPU hosts, `ACE_STEP_DEVICE=0 YUE2_DEVICE=1 ./setup_linux.sh` pins the engines separately and enables concurrent model residency when the two explicit device values differ; leave either value unset (or set both to the same device) to retain the default exclusive switching behavior. Validated end-to-end on Ubuntu 24.04 x86_64 with NVIDIA CUDA.
 
 ### Step 2: run
 
@@ -418,7 +421,7 @@ CUDA_BIN_DIR=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.4\bin
 - `ACE_STEP_DIR` — root of the cloned and patched ACE-Step-1.5.
 - `YUE2_DIR` — root of the cloned and patched audio.cpp (where `audiocpp_server.exe` is built and the YuE2/SheetSage2/MuScriptor GGUF weights live).
 - `DEMUCS_DIR` — root of the `demucs` uv project used for stem separation.
-- `STABLE_AUDIO_DIR` — root of the `sa3-server` uv project (a copy of `external/sa3-server` with its `.venv`). The Stable Audio 3 weights are gated on Hugging Face and are read from the Hugging Face cache: accept the licence on [`stabilityai/stable-audio-3-medium`](https://huggingface.co/stabilityai/stable-audio-3-medium) (and `-small-music` / `-small-sfx` if you want them), sign in once with `uvx --from huggingface_hub hf auth login`, then `uvx --from huggingface_hub hf download stabilityai/stable-audio-3-medium`. Optional: `STABLE_AUDIO_API_PORT` (8002), `STABLE_AUDIO_PRELOAD` (the checkpoint warmed up at start, `medium` by default), `STABLE_AUDIO_DEVICE`.
+- `STABLE_AUDIO_DIR` — root of the `sa3-server` uv project (a copy of `external/sa3-server` with its `.venv`). The Stable Audio 3 weights are read from the Hugging Face cache (`HF_HOME`) and downloaded from the app's Stable Audio 3 page (see *Stable Audio 3 weights* above); the main checkpoints are gated, so accept the licence on [`stabilityai/stable-audio-3-medium`](https://huggingface.co/stabilityai/stable-audio-3-medium) (and `-small-music` / `-small-sfx`) first. Optional: `STABLE_AUDIO_API_PORT` (8002), `STABLE_AUDIO_PRELOAD` (the checkpoint warmed up at start, `medium` by default), `STABLE_AUDIO_DEVICE`.
 - `FFMPEG_BIN_DIR` — folder containing `ffmpeg.exe`/`ffprobe.exe`.
 - `CUDA_BIN_DIR` — the `bin` folder of the installed CUDA Toolkit (needs to be on PATH for `audiocpp_server.exe`). Windows only — on macOS this is left unset, since YuE2 runs on the Metal backend instead.
 
@@ -427,7 +430,7 @@ CUDA_BIN_DIR=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.4\bin
 ## Known limitations
 
 - The engines (ACE-Step, YuE2, Stable Audio 3) switch exclusively by default. On multi-GPU Linux hosts, explicitly setting every `*_DEVICE` (`ACE_STEP_DEVICE`, `YUE2_DEVICE`, `STABLE_AUDIO_DEVICE`) to different device values opts into concurrent residency and pins each engine to its own GPU.
-- Stable Audio 3 is instrumental only (no vocals), up to 380 s per task with the medium model, and its `medium` checkpoint needs a CUDA GPU with Flash Attention (prebuilt wheels are pinned for Windows and Linux; on macOS only the small models run). It cannot add a part over a mix: the arranger's "Add a part" stays with ACE-Step.
+- Stable Audio 3 is instrumental only (no vocals), up to 380 s per task with the medium model, and its `medium` checkpoint needs a CUDA GPU with Flash Attention (prebuilt wheels are pinned for Windows and Linux; on macOS only the small models run). It cannot add a part over a mix: the arranger's "Add a part" stays with ACE-Step. Its main checkpoints are gated: a free Hugging Face account, the licence accepted once and a token are needed to download them.
 - MIDI transcription requires YuE2 specifically to be active (the MuScriptor model loads into its process).
 - Windows (NVIDIA CUDA), macOS/Apple Silicon (Metal/MPS), and Linux x86_64 (NVIDIA CUDA) have setup/run paths — `.bat`/`.ps1` scripts for the first, `.sh` scripts for the other two. Linux is community-contributed: it builds audio.cpp from source and needs a CUDA development toolkit in addition to the driver, and has been verified end-to-end on Ubuntu 24.04 (via WSL2 with GPU passthrough) rather than on bare metal or other distros.
 - The desktop installers are experimental: unsigned (a SmartScreen or Gatekeeper prompt), and the first launch downloads from about 18 GB (ACE-Step only) to about 60 GB (everything, including the XL model). The installer does not support Linux yet — Linux users run from source via `setup_linux.sh`.

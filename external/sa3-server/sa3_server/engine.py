@@ -11,55 +11,14 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from huggingface_hub import try_to_load_from_cache
 
 from .audio import trim_leading_silence, trim_to_seconds, write_wav
 from .jobs import Job, JobCancelled
+from .specs import MODEL_SPECS, installed_models
 
 log = logging.getLogger("sa3.engine")
 
-MODEL_SPECS: dict[str, dict[str, Any]] = {
-    "medium": {
-        "label": "Medium",
-        "repo": "stabilityai/stable-audio-3-medium",
-        "params": "1.4B",
-        "max_seconds": 380,
-        "gpu_only": True,
-        "kinds": ["music", "sfx"],
-    },
-    "small-music": {
-        "label": "Small Music",
-        "repo": "stabilityai/stable-audio-3-small-music",
-        "params": "433M",
-        "max_seconds": 120,
-        "gpu_only": False,
-        "kinds": ["music"],
-    },
-    "small-sfx": {
-        "label": "Small SFX",
-        "repo": "stabilityai/stable-audio-3-small-sfx",
-        "params": "433M",
-        "max_seconds": 120,
-        "gpu_only": False,
-        "kinds": ["sfx"],
-    },
-}
-# The pre-training checkpoints: the start of LoRA training, and the only ones where CFG and a negative
-# prompt do anything (about 50 steps, CFG around 7). Same limits as their post-trained twins.
-for _name, _spec in list(MODEL_SPECS.items()):
-    MODEL_SPECS[f"{_name}-base"] = {**_spec, "label": f"{_spec['label']} Base", "repo": f"{_spec['repo']}-base", "base": True}
-for _spec in MODEL_SPECS.values():
-    _spec.setdefault("base", False)
 TASKS = ("text", "a2a", "inpaint")
-
-
-def installed_models() -> dict[str, str | None]:
-    """model id -> path of the cached checkpoint, or None when it was never downloaded."""
-    found: dict[str, str | None] = {}
-    for name, spec in MODEL_SPECS.items():
-        path = try_to_load_from_cache(spec["repo"], "model.safetensors")
-        found[name] = path if isinstance(path, str) else None
-    return found
 
 
 class Engine:
@@ -90,8 +49,8 @@ class Engine:
             if installed_models().get(name) is None:
                 raise FileNotFoundError(
                     f"model '{name}' is not downloaded: accept the licence on "
-                    f"https://huggingface.co/{MODEL_SPECS[name]['repo']} and run "
-                    f"`hf download {MODEL_SPECS[name]['repo']}`"
+                    f"https://huggingface.co/{MODEL_SPECS[name]['repo']} and download it from Remiqora's "
+                    f"Stable Audio page or with `python -m sa3_server.download {name}`"
                 )
             while len(self._models) >= self.max_resident:
                 evicted, model = self._models.popitem(last=False)

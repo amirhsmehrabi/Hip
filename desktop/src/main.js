@@ -53,6 +53,7 @@ async function saveFeatures(picked) {
     demucs: !!picked.demucs,
     aceBase: !!picked.aceBase,
     aceXl: !!picked.aceXl,
+    stableAudio: !!picked.stableAudio,
   };
   savedFeatures = clean;
   await updateConfig(app.getPath('userData'), { features: clean });
@@ -64,7 +65,7 @@ async function saveFeatures(picked) {
  * was picked but not finished (an "add" left half way) does not hold the app back; its Install button resumes it.
  */
 function coreContext() {
-  const none = { yue2: false, yue2Precisions: [], demucs: false, aceBase: false, aceXl: false };
+  const none = { yue2: false, yue2Precisions: [], demucs: false, aceBase: false, aceXl: false, stableAudio: false };
   return { ...ctx, selection: resolveSelection(none, ctx.installed) };
 }
 

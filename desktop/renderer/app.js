@@ -127,6 +127,7 @@
         ${pickRow({ id: 'yue2', checked: sel.yue2, fixed: inst.yue2 && 'installed', size: f.sizes.yue2, title: t('pick.yue2'), text: t('pick.yue2.text'),
           children: `<div class="precs" role="group" aria-label="${esc(t('pick.prec'))}"><span class="lbl">${esc(t('pick.prec'))}</span>${precisions}</div>` })}
         ${pickRow({ id: 'demucs', checked: sel.demucs, fixed: inst.demucs && 'installed', size: f.sizes.demucs, title: t('pick.demucs'), text: t('pick.demucs.text') })}
+        ${pickRow({ id: 'stableAudio', checked: sel.stableAudio, fixed: inst.stableAudio && 'installed', size: f.sizes.stableAudio, title: t('pick.stableAudio'), text: t('pick.stableAudio.text') })}
         ${pickRow({ id: 'aceBase', checked: sel.aceBase, fixed: inst.aceBase && 'installed', size: f.sizes.aceBase, title: t('pick.aceBase'), text: t('pick.aceBase.text') })}
         ${pickRow({ id: 'aceXl', checked: sel.aceXl, fixed: inst.aceXl && 'installed', size: f.sizes.aceXl, title: t('pick.aceXl'), text: t('pick.aceXl.text'), children: xlWarning() })}
       </ul>

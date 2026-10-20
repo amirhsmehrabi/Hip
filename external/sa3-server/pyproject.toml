@@ -6,7 +6,9 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 license = "MIT"
 dependencies = [
-  "stable-audio-3 @ git+https://github.com/Stability-AI/stable-audio-3@77e0398c26f7d22d801ec1bb036307e8b231f741",
+  # A commit-addressed source archive rather than git+https: the desktop app installs this project on machines
+  # without git.
+  "stable-audio-3 @ https://github.com/Stability-AI/stable-audio-3/archive/77e0398c26f7d22d801ec1bb036307e8b231f741.tar.gz",
   "torch==2.7.1",
   "torchaudio==2.7.1",
   "fastapi>=0.115",

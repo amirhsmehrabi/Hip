@@ -94,6 +94,10 @@
     "approxBytes": 4500000000,
     "model": "htdemucs"
   },
+  "stableAudio": {
+    "_comment": "The sa3-server environment (torch 2.7.1, Flash Attention on Windows/Linux). The weights are gated on Hugging Face and are downloaded from the app, not here.",
+    "approxBytes": 4500000000
+  },
   "weights": {
     "packageOrder": [
       "yue2_main_q8_0",

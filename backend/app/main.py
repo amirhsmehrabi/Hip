@@ -9,6 +9,7 @@ from .api.routes_lora_dataset import router as lora_dataset_router
 from .api.routes_midi import router as midi_router
 from .api.routes_orchestrator import router as orchestrator_router
 from .api.routes_projects import router as projects_router
+from .api.routes_sa3_weights import router as sa3_weights_router
 from .api.routes_settings import router as settings_router
 from .api.routes_proxy import router as proxy_router
 from .api.routes_stems import router as stems_router
@@ -39,6 +40,7 @@ app.include_router(system_router)
 app.include_router(lora_dataset_router)
 # Registered before proxy_router's catch-all so this exact path wins.
 app.include_router(yue2_upload_router)
+app.include_router(sa3_weights_router)
 app.include_router(proxy_router)
 
 if FRONTEND_DIST_DIR.exists():
