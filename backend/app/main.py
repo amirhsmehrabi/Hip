@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 
 from .api.routes_lora_dataset import router as lora_dataset_router
+from .api.routes_engines import router as engines_router
 from .api.routes_midi import router as midi_router
 from .api.routes_orchestrator import router as orchestrator_router
 from .api.routes_projects import router as projects_router
@@ -18,6 +19,7 @@ from .api.routes_tracks import router as tracks_router
 from .api.routes_yue2_upload import router as yue2_upload_router
 from .config import FRONTEND_DIST_DIR
 from .orchestrator.manager import manager
+from .sfx_cpu import sampler
 
 
 @asynccontextmanager
@@ -26,6 +28,7 @@ async def lifespan(app: FastAPI):
     yield
     # Don't leave a GPU process running after the dev server is killed.
     await manager.stop_all()
+    await sampler.shutdown()
 
 
 app = FastAPI(title="Remiqora", lifespan=lifespan)
@@ -41,6 +44,7 @@ app.include_router(lora_dataset_router)
 # Registered before proxy_router's catch-all so this exact path wins.
 app.include_router(yue2_upload_router)
 app.include_router(sa3_weights_router)
+app.include_router(engines_router)
 app.include_router(proxy_router)
 
 if FRONTEND_DIST_DIR.exists():

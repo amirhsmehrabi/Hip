@@ -148,6 +148,9 @@ YUE2_SERVER_HOST = os.getenv("YUE2_SERVER_HOST", "127.0.0.1")
 YUE2_DEVICE = os.getenv("YUE2_DEVICE", "").strip()
 STABLE_AUDIO_API_PORT = int(os.getenv("STABLE_AUDIO_API_PORT", "8002"))
 STABLE_AUDIO_DEVICE = os.getenv("STABLE_AUDIO_DEVICE", "").strip()
+# A second sa3-server on the CPU for the editor's Samples panel (app/sfx_cpu.py): it runs next to whatever
+# engine holds the GPU. Off until switched on in the panel's settings.
+STABLE_AUDIO_CPU_PORT = int(os.getenv("STABLE_AUDIO_CPU_PORT", "8003"))
 # Which Stable Audio 3 checkpoint the server warms up right after it starts (medium needs a
 # CUDA GPU with Flash Attention; small-music / small-sfx run anywhere).
 STABLE_AUDIO_PRELOAD = os.getenv("STABLE_AUDIO_PRELOAD", "medium").strip()

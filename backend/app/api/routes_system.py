@@ -6,6 +6,7 @@ import asyncio
 from fastapi import APIRouter
 
 from .. import features, stems, sysinfo
+from ..sfx_cpu import sampler
 from ..orchestrator.manager import manager
 
 router = APIRouter(prefix="/api/system")
@@ -17,6 +18,9 @@ async def resources() -> dict:
     demucs = stems.running_pids()
     if demucs:
         groups["demucs"] = demucs
+    # the CPU sample server is Stable Audio too: its RAM counts there
+    if sampler.pids():
+        groups["stable_audio"] = [*groups.get("stable_audio", []), *sampler.pids()]
     # The per-process counters take ~1.5 s on Windows: off the event loop.
     return await asyncio.to_thread(sysinfo.snapshot, groups)
 

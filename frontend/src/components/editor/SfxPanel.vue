@@ -2,7 +2,7 @@
 // "Samples": one-shots, loops and textures from Stable Audio 3, auditioned in a strip of results and
 // placed on the timeline by hand (a new lane, or the selected lane at the playhead). Same shell as the
 // AI arranger: a docked, single-root panel with a grip, a top row that keeps the action in view.
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { decodeStem } from '../../audio/mixerEngine'
 import type { Clip } from '../../audio/timelineTypes'
@@ -12,6 +12,7 @@ import { shortLaneNames } from '../../utils/laneNames'
 import { TRACK_COLORS } from '../../utils/trackColors'
 import { claimPlayback, fetchAndComputePeaks, releasePlaybackIfCurrent } from '../../composables/audioPlayback'
 import { useEditorStore } from '../../stores/editor'
+import { useEnginesStore } from '../../stores/engines'
 import { useFeaturesStore } from '../../stores/features'
 import { useOrchestratorStore } from '../../stores/orchestrator'
 import { SFX_KINDS, useSfxStore } from '../../stores/sfx'
@@ -38,6 +39,7 @@ const sfxStore = useSfxStore()
 const sa3Store = useStableAudioStore()
 const orchestrator = useOrchestratorStore()
 const features = useFeaturesStore()
+const engines = useEnginesStore()
 
 // ---- Form ----
 const kind = ref<SfxKind>('oneshot')
@@ -148,8 +150,17 @@ const listenError = computed(() => {
 const sa3Status = computed(() => orchestrator.statuses.stable_audio?.status ?? 'stopped')
 const sa3Running = computed(() => orchestrator.activeModel === 'stable_audio' && sa3Status.value === 'running')
 const engineLabel = MODEL_LABELS.stable_audio
+/**
+ * Samples on the CPU (Models page): when switched on, the panel sends its jobs to a second sa3-server on the CPU, so
+ * the engine on the GPU stays as it is. With route "auto" a Stable Audio already running on the GPU is used instead.
+ */
+const cpu = computed(() => engines.cpu)
+const useCpu = computed(() => !!cpu.value?.settings.enabled && cpu.value.available && (cpu.value.settings.route === 'cpu' || !sa3Running.value))
+const cpuStarting = ref(false)
+onMounted(() => { void engines.refreshCpu().catch(() => {}) })
 /** Checkpoints to offer: what the running engine reports, else what is on the disk (features). */
 const modelChoices = computed<{ id: Sa3ModelId; label: string }[]>(() => {
+  if (useCpu.value) return (cpu.value?.models ?? []).map((id) => ({ id, label: id }))
   const reported = sa3Store.models.filter((m) => m.available)
   if (reported.length) return reported.map((m) => ({ id: m.id, label: `${m.label} · ${m.params}` }))
   return (features.features.stable_audio_models as Sa3ModelId[]).map((id) => ({ id, label: id }))
@@ -170,7 +181,7 @@ async function startEngine() {
 }
 
 // ---- Generate ----
-const canGenerate = computed(() => sa3Running.value && !preparing.value && !!captions.value[kind.value].trim() && modelChoices.value.length > 0 && !listenError.value)
+const canGenerate = computed(() => (sa3Running.value || useCpu.value) && !preparing.value && !!captions.value[kind.value].trim() && modelChoices.value.length > 0 && !listenError.value)
 async function generate() {
   formError.value = null
   const caption = captions.value[kind.value].trim()
@@ -191,10 +202,20 @@ async function generate() {
       reference = { laneIds: [...listenIds.value], start, end, closeness: closeness.value }
       audio = audioBufferToWavFile(renderContext(store.project, props.buffers, listenIds.value, start, end).buffer, 'reference.wav')
     }
+    const device = useCpu.value ? 'cpu' : 'gpu'
+    if (device === 'cpu' && cpu.value?.status !== 'running') {
+      // the CPU server starts on the first sample (about 10 s) and stops again after a while without use
+      cpuStarting.value = true
+      try {
+        await engines.startCpu()
+      } finally {
+        cpuStarting.value = false
+      }
+    }
     await sfxStore.submit({
       kind: kind.value, caption, model: model.value, duration: duration.value, bpm: bpm.value, bars: loopBars.value, count: count.value,
       trimSilence: kind.value === 'oneshot' && trimSilence.value, reference,
-    }, store.session, audio)
+    }, store.session, audio, device)
   } catch (e) {
     formError.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -345,11 +366,20 @@ function statusKey(job: SfxJob): string {
       </button>
       <button type="button" class="rounded-lg border border-border px-2 py-1 text-xs text-text-dim hover:bg-panel-2" :class="narrow && 'order-1 ml-auto'" :aria-label="t('sfx.close')" @click="emit('close')">✕</button>
     </div>
-    <p v-if="sa3Running && !modelLoaded" class="-mt-1 text-right text-[11px] text-text-dim">{{ t('sfx.firstLoadNote') }}</p>
+    <p v-if="sa3Running && !useCpu && !modelLoaded" class="-mt-1 text-right text-[11px] text-text-dim">{{ t('sfx.firstLoadNote') }}</p>
     <p v-if="formError" class="rounded-lg bg-status-failed/10 p-2 text-xs text-status-failed">{{ formError }}</p>
 
+    <!-- On the CPU: the GPU engine stays as it is -->
+    <p v-if="useCpu" class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border bg-panel-2 px-3 py-2 text-xs text-text-dim">
+      <span v-if="cpuStarting || cpu?.status === 'starting'" class="inline-flex items-center gap-2">
+        <span class="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-accent1 border-t-transparent"></span>{{ t('sfx.cpuStarting') }}
+      </span>
+      <span v-else>{{ t(orchestrator.activeModel && orchestrator.activeModel !== 'stable_audio' ? 'sfx.cpuOnBeside' : 'sfx.cpuOn', { running: orchestrator.activeModel ? MODEL_LABELS[orchestrator.activeModel] : '' }) }}</span>
+      <RouterLink to="/models#samples-cpu" class="text-accent1 underline">{{ t('sfx.cpuSettings') }}</RouterLink>
+    </p>
+
     <!-- Stable Audio 3 must be running (starting it stops the other engine) -->
-    <div v-if="!sa3Running" class="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-panel-2 p-3 text-sm">
+    <div v-else-if="!sa3Running" class="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-panel-2 p-3 text-sm">
       <p v-if="sa3Status === 'starting'" class="flex items-center gap-2 text-text-dim">
         <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-accent1 border-t-transparent"></span>
         {{ t('aiPart.engineStarting', { engine: engineLabel }) }}
@@ -362,6 +392,7 @@ function statusKey(job: SfxJob): string {
         <p class="text-text-dim">{{ t('sfx.offline') }}</p>
         <button type="button" class="accent-gradient rounded-lg px-3 py-1.5 text-xs font-medium text-white" :disabled="orchestrator.switching" @click="startEngine">{{ t('aiPart.startEngine', { engine: engineLabel }) }}</button>
         <span v-if="orchestrator.activeModel && orchestrator.activeModel !== 'stable_audio'" class="text-[11px] text-text-dim">{{ t('aiPart.engineSwitchNote', { running: MODEL_LABELS[orchestrator.activeModel] }) }}</span>
+        <RouterLink v-if="cpu?.available" to="/models#samples-cpu" class="basis-full text-[11px] text-accent1 underline">{{ t('sfx.cpuOffer') }}</RouterLink>
       </template>
     </div>
 
