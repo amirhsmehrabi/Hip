@@ -22,6 +22,11 @@ extraResources:
     to: frontend
   - from: resources/patches
     to: patches
+  # Stable Audio 3's server and the prompt assistant: uv projects installed from these sources at setup
+  - from: resources/sa3-server
+    to: sa3-server
+  - from: resources/prompt-assistant
+    to: prompt-assistant
 
 win:
   target:
