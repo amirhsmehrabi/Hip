@@ -13,7 +13,8 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import * as aceApi from '../../api/aceStep'
 import type { GenerateMusicRequest } from '../../api/aceStep'
-import { writePrompt } from '../../api/assistant'
+import { PromptCancelled, writePromptLive } from '../../api/assistant'
+import type { AssistantTask, WriteProgress } from '../../api/assistant'
 import { MODEL_LABELS } from '../../composables/useModelSwitch'
 import { useAceStepStore } from '../../stores/aceStep'
 import { useEnginesStore } from '../../stores/engines'
@@ -24,6 +25,7 @@ import { useStableAudioStore } from '../../stores/stableAudio'
 import type { Sa3ModelId } from '../../api/stableAudio'
 import { guessVocalLanguage, VOCAL_LANGUAGES } from '../../utils/vocalLanguages'
 import ChipGroup from '../../components/shared/ChipGroup.vue'
+import PromptProgress from '../../components/shared/PromptProgress.vue'
 import MicIcon from '../../components/shared/icons/MicIcon.vue'
 import PulseIcon from '../../components/shared/icons/PulseIcon.vue'
 import SparklesIcon from '../../components/shared/icons/SparklesIcon.vue'
@@ -143,6 +145,28 @@ interface Draft {
 const draft = ref<Draft | null>(null)
 const writing = ref(false)
 const error = ref<string | null>(null)
+/** The assistant's progress while it writes; Stop cancels the job. */
+const progress = ref<WriteProgress | null>(null)
+const stopping = ref(false)
+let stopRun: (() => void) | null = null
+
+async function byAssistant(task: AssistantTask, extra: { language?: string; kind?: string }) {
+  stopping.value = false
+  const run = writePromptLive(task, idea.value.trim(), extra, (p) => { progress.value = p }, {
+    unloadsEngine: assistantOnGpu.value && !!orchestrator.activeModel,
+  })
+  stopRun = run.cancel
+  try {
+    return (await run.result).fields
+  } finally {
+    stopRun = null
+    progress.value = null
+  }
+}
+function stopWriting() {
+  stopping.value = true
+  stopRun?.()
+}
 
 async function write() {
   const text = idea.value.trim()
@@ -162,17 +186,17 @@ async function write() {
   try {
     if (engine.value === 'sa3') {
       // the kind is known (an instrumental): Stable Audio's "Music" instructions, no classifier
-      const r = await writePrompt('sa3', text, { kind: 'music' })
+      const f = await byAssistant('sa3', { kind: 'music' })
       const max = sa3Models.value.find((m) => m.id === sa3Model.value)?.max ?? 120
-      const dur = typeof r.fields.duration === 'number' ? r.fields.duration : 60
+      const dur = typeof f.duration === 'number' ? f.duration : 60
       draft.value = {
-        ...base, engine: 'sa3', caption: String(r.fields.prompt ?? ''), lyrics: '',
-        bpm: typeof r.fields.bpm === 'number' ? r.fields.bpm : null,
+        ...base, engine: 'sa3', caption: String(f.prompt ?? ''), lyrics: '',
+        bpm: typeof f.bpm === 'number' ? f.bpm : null,
         duration: Math.max(5, Math.min(max, Math.round(dur))), writtenBy: 'assistant', seconds: seconds(),
       }
     } else if (engine.value === 'yue2') {
-      const r = await writePrompt('yue2-song', text, { language: effectiveLanguage.value })
-      draft.value = { ...base, engine: 'yue2', caption: String(r.fields.style ?? ''), lyrics: String(r.fields.lyrics ?? ''), writtenBy: 'assistant', seconds: seconds() }
+      const f = await byAssistant('yue2-song', { language: effectiveLanguage.value })
+      draft.value = { ...base, engine: 'yue2', caption: String(f.style ?? ''), lyrics: String(f.lyrics ?? ''), writtenBy: 'assistant', seconds: seconds() }
     } else if (writer.value === 'ace') {
       const s = await aceApi.createSample(text, instrumental.value, instrumental.value ? undefined : effectiveLanguage.value)
       draft.value = {
@@ -188,8 +212,7 @@ async function write() {
         seconds: seconds(),
       }
     } else {
-      const r = await writePrompt(instrumental.value ? 'ace-instrumental' : 'ace-song', text, { language: effectiveLanguage.value })
-      const f = r.fields
+      const f = await byAssistant(instrumental.value ? 'ace-instrumental' : 'ace-song', { language: effectiveLanguage.value })
       draft.value = {
         ...base,
         engine: 'ace',
@@ -208,7 +231,8 @@ async function write() {
       if (assistantOnGpu.value) void orchestrator.refresh()
     }
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    // stopped by hand: no error, the previous prompt (if any) stays
+    if (!(e instanceof PromptCancelled)) error.value = e instanceof Error ? e.message : String(e)
   } finally {
     writing.value = false
   }
@@ -410,8 +434,9 @@ onMounted(() => {
           <button type="button" class="text-accent1 underline disabled:opacity-50" :disabled="orchestrator.switching" @click="startAce">{{ t('idea.startAce') }}</button>
           · <RouterLink to="/models#assistant" class="text-accent1 underline">{{ t('idea.setupAssistant') }}</RouterLink>
         </template>
-        <span v-if="writing" class="ml-1">{{ t(writer === 'ace' ? 'idea.writingAce' : assistantOnGpu && orchestrator.activeModel ? 'idea.writingAssistantGpu' : 'idea.writingAssistant') }}</span>
+        <span v-if="writing && writer === 'ace'" class="ml-1">{{ t('idea.writingAce') }}</span>
       </p>
+      <PromptProgress v-if="writing && progress" :progress="progress" :stopping="stopping" class="mt-3" @stop="stopWriting" />
       <p v-if="error" class="mt-3 rounded-lg bg-status-failed/10 p-3 text-xs text-status-failed" role="alert">{{ error }}</p>
     </section>
 

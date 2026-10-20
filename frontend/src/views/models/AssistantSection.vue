@@ -3,8 +3,10 @@
 // try it: an idea in, the prompt an engine would get out.
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { AssistantResult, AssistantSettings, AssistantTask } from '../../api/assistant'
-import { writePrompt } from '../../api/assistant'
+import type { AssistantResult, AssistantSettings, AssistantTask, WriteProgress } from '../../api/assistant'
+import { PromptCancelled, writePromptLive } from '../../api/assistant'
+import { useOrchestratorStore } from '../../stores/orchestrator'
+import PromptProgress from '../../components/shared/PromptProgress.vue'
 import { useEnginesStore } from '../../stores/engines'
 import { gb } from '../../utils/bytes'
 import PartRow from '../../components/shared/PartRow.vue'
@@ -48,19 +50,34 @@ const task = ref<AssistantTask>('sa3')
 const writing = ref(false)
 const result = ref<AssistantResult | null>(null)
 const tryError = ref<string | null>(null)
+const progress = ref<WriteProgress | null>(null)
+const stopping = ref(false)
+let stopRun: (() => void) | null = null
+const orchestrator = useOrchestratorStore()
 async function tryIt() {
   if (!idea.value.trim() || writing.value) return
   writing.value = true
+  stopping.value = false
   tryError.value = null
   result.value = null
+  const run = writePromptLive(task.value, idea.value.trim(), {}, (p) => { progress.value = p }, {
+    unloadsEngine: state.value?.settings.device === 'cuda' && !!orchestrator.activeModel,
+  })
+  stopRun = run.cancel
   try {
-    result.value = await writePrompt(task.value, idea.value.trim())
+    result.value = await run.result
     await store.load()
   } catch (e) {
-    tryError.value = e instanceof Error ? e.message : String(e)
+    if (!(e instanceof PromptCancelled)) tryError.value = e instanceof Error ? e.message : String(e)
   } finally {
     writing.value = false
+    progress.value = null
+    stopRun = null
   }
+}
+function stopTry() {
+  stopping.value = true
+  stopRun?.()
 }
 /** Fields shown in a fixed order; long texts (lyrics) as a block. */
 const FIELD_ORDER = ['prompt', 'caption', 'style', 'lyrics', 'category', 'bpm', 'keyscale', 'duration', 'language']
@@ -170,12 +187,12 @@ const resultFields = computed(() => {
             <button type="submit" class="accent-gradient inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50" :disabled="!idea.trim() || writing || !installedModels.length">
               <SparklesIcon class="h-3.5 w-3.5" />{{ t(writing ? 'models.assistant.writing' : 'models.assistant.write') }}
             </button>
-            <span v-if="writing" class="text-xs text-text-dim">{{ t(state.status === 'running' ? 'models.assistant.writingHint' : 'models.assistant.startingHint') }}</span>
           </div>
         </form>
+        <PromptProgress v-if="writing && progress" :progress="progress" :stopping="stopping" class="mt-2" @stop="stopTry" />
         <p v-if="tryError" class="mt-2 rounded-lg bg-status-failed/10 p-2 text-xs text-status-failed">{{ tryError }}</p>
         <div v-if="result" class="mt-3 rounded-lg border border-border bg-panel-2/60 p-3">
-          <p class="text-[11px] text-text-dim">{{ t('models.assistant.took', { s: (result.took_ms / 1000).toFixed(1), tokens: result.tokens, device: t(`models.assistant.on.${result.device}`) }) }}</p>
+          <p class="text-[11px] text-text-dim">{{ t('models.assistant.took', { s: (result.took_ms / 1000).toFixed(1), tokens: result.tokens, device: state.device ? t(`models.assistant.on.${state.device}`) : '' }) }}</p>
           <dl class="mt-2 space-y-2 text-sm">
             <div v-for="f in resultFields" :key="f.key" :class="f.long ? '' : 'flex flex-wrap gap-x-2'">
               <dt class="text-xs font-medium text-text-dim">{{ t(`models.assistant.fields.${f.key}`) }}</dt>
