@@ -18,6 +18,8 @@ import { gb } from '../../utils/bytes'
 import HfTokenField from '../../components/shared/HfTokenField.vue'
 import NotInstalled from '../../components/shared/NotInstalled.vue'
 import PartRow from '../../components/shared/PartRow.vue'
+import AssistantSection from './AssistantSection.vue'
+import SparklesIcon from '../../components/shared/icons/SparklesIcon.vue'
 import MicIcon from '../../components/shared/icons/MicIcon.vue'
 import PulseIcon from '../../components/shared/icons/PulseIcon.vue'
 import SampleIcon from '../../components/shared/icons/SampleIcon.vue'
@@ -31,7 +33,7 @@ const orchestrator = useOrchestratorStore()
 const route = useRoute()
 const router = useRouter()
 
-type SectionId = 'ace-step' | 'yue2' | 'stable-audio' | 'samples-cpu' | 'demucs'
+type SectionId = 'ace-step' | 'yue2' | 'stable-audio' | 'samples-cpu' | 'demucs' | 'assistant'
 /** The same icons as the header's engine tabs, so the list reads as the same things. Colours: the disk bar. */
 const SECTIONS: { id: SectionId; engine: EngineId; icon: Component; bar: string; sub?: boolean }[] = [
   { id: 'ace-step', engine: 'ace_step', icon: WaveIcon, bar: 'bg-accent1' },
@@ -39,6 +41,8 @@ const SECTIONS: { id: SectionId; engine: EngineId; icon: Component; bar: string;
   { id: 'stable-audio', engine: 'stable_audio', icon: PulseIcon, bar: 'bg-accent' },
   { id: 'samples-cpu', engine: 'stable_audio', icon: SampleIcon, bar: '', sub: true },
   { id: 'demucs', engine: 'demucs', icon: SplitStemsIcon, bar: 'bg-text-dim' },
+  // not an engine: the prompt assistant (RFC 0002); its own component and state (store.assistant)
+  { id: 'assistant', engine: 'demucs', icon: SparklesIcon, bar: 'bg-status-queued' },
 ]
 const isSection = (s: string): s is SectionId => SECTIONS.some((x) => x.id === s)
 const current = ref<SectionId>(isSection(route.hash.slice(1)) ? (route.hash.slice(1) as SectionId) : 'ace-step')
@@ -59,10 +63,11 @@ function titleOf(id: SectionId): string {
 const sectionTitle = computed(() => titleOf(current.value))
 
 // ---- disk ----
-const totalBytes = computed(() => Object.values(engines.value ?? {}).reduce((a, e) => a + (e.on_disk ?? 0), 0))
+const assistantBytes = computed(() => store.assistant?.on_disk ?? 0)
+const totalBytes = computed(() => Object.values(engines.value ?? {}).reduce((a, e) => a + (e.on_disk ?? 0), 0) + assistantBytes.value)
 /** Shares of the disk bar, one per engine; the smallest still shows as a sliver. */
 const diskShares = computed(() => SECTIONS.filter((s) => !s.sub).map((s) => {
-  const bytes = engines.value?.[s.engine]?.on_disk ?? 0
+  const bytes = s.id === 'assistant' ? assistantBytes.value : engines.value?.[s.engine]?.on_disk ?? 0
   return { id: s.id, bar: s.bar, bytes, percent: totalBytes.value ? Math.max(bytes ? 0.6 : 0, (bytes / totalBytes.value) * 100) : 0 }
 }))
 
@@ -80,9 +85,19 @@ async function run(action: () => Promise<unknown>) {
 const status = computed(() => engine.value?.status ?? null)
 const STATUS_DOT: Record<string, string> = { running: 'bg-status-done', starting: 'bg-status-queued', stopping: 'bg-status-queued', error: 'bg-status-failed', stopped: 'bg-text-dim/50' }
 const STATUS_PILL: Record<string, string> = { running: 'bg-status-done/15 text-status-done', starting: 'bg-status-queued/15 text-status-queued', stopping: 'bg-status-queued/15 text-status-queued', error: 'bg-status-failed/15 text-status-failed', stopped: 'bg-panel-2 text-text-dim' }
-function dotFor(id: EngineId): string {
+function dotFor(id: EngineId, section?: SectionId): string {
+  if (section === 'assistant') return STATUS_DOT[store.assistant?.status ?? 'stopped']
   if (id === 'demucs') return ''
   return STATUS_DOT[engines.value?.[id]?.status ?? 'stopped']
+}
+function bytesFor(s: { id: SectionId; engine: EngineId }): number {
+  return s.id === 'assistant' ? assistantBytes.value : engines.value?.[s.engine]?.on_disk ?? 0
+}
+function navTitle(s: { id: SectionId; engine: EngineId }): string {
+  if (s.id === 'samples-cpu') return t('models.cpu.navTitle')
+  if (s.id === 'demucs') return t('models.demucs.navTitle')
+  if (s.id === 'assistant') return t('models.assistant.navTitle')
+  return MODEL_LABELS[s.engine as 'ace_step' | 'yue2' | 'stable_audio']
 }
 async function startEngine() {
   if (engineId.value === 'demucs') return
@@ -193,14 +208,15 @@ onBeforeUnmount(() => store.unwatch())
         >
           <span v-if="current === s.id" class="accent-gradient absolute inset-y-2 left-0 w-0.5 rounded-full" aria-hidden="true"></span>
           <component :is="s.icon" class="h-4 w-4 shrink-0" :class="current === s.id ? 'text-accent1' : 'text-text-dim'" />
-          <span class="min-w-0 flex-1 truncate" :class="current === s.id && 'font-medium'">{{ s.id === 'samples-cpu' ? t('models.cpu.navTitle') : s.id === 'demucs' ? t('models.demucs.navTitle') : MODEL_LABELS[s.engine as 'ace_step' | 'yue2' | 'stable_audio'] }}</span>
-          <span v-if="!s.sub && dotFor(s.engine)" class="h-1.5 w-1.5 shrink-0 rounded-full" :class="dotFor(s.engine)" :title="t(`models.status.${engines[s.engine].status ?? 'stopped'}`)"></span>
-          <span v-if="!s.sub && engines[s.engine].on_disk" class="hidden text-[11px] tabular-nums text-text-dim lg:inline">{{ t('models.size', { gb: gb(engines[s.engine].on_disk ?? 0, locale) }) }}</span>
+          <span class="min-w-0 flex-1 truncate" :class="current === s.id && 'font-medium'">{{ navTitle(s) }}</span>
+          <span v-if="!s.sub && dotFor(s.engine, s.id)" class="h-1.5 w-1.5 shrink-0 rounded-full" :class="dotFor(s.engine, s.id)"></span>
+          <span v-if="!s.sub && bytesFor(s)" class="hidden text-[11px] tabular-nums text-text-dim lg:inline">{{ t('models.size', { gb: gb(bytesFor(s), locale) }) }}</span>
         </button>
       </nav>
 
+      <AssistantSection v-if="current === 'assistant'" />
       <!-- the chosen engine: one card with a header strip and sections inside -->
-      <section class="min-w-0 overflow-hidden rounded-xl border border-border bg-panel">
+      <section v-else class="min-w-0 overflow-hidden rounded-xl border border-border bg-panel">
         <div class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-panel-2/60 px-4 py-3">
           <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent1/15 text-accent1">
             <component :is="section.icon" class="h-[18px] w-[18px]" />

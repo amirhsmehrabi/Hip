@@ -1,0 +1,194 @@
+"""What the assistant can write, one function per task, each returning the fields the engine takes.
+
+- sa3: tags for Stable Audio 3 in its own style, with its own instructions (sa3_prompts.py): a classifier picks
+  music / instrument / one-shot / sound unless the caller says which, the reply is checked for the artifacts
+  Stable Audio's own reprompt rejects, and the closing "BPM: N. Length: N seconds" is read into bpm and duration.
+- yue2-song: YuE2's style tags and lyrics with section labels.
+- ace-song / ace-instrumental: ACE-Step's caption, lyrics, BPM, key and length, for when its own language model
+  (/v1/create_sample) is not running.
+Replies in JSON are parsed leniently (a small model sometimes leaves a string or a brace open) and asked again once.
+"""
+from __future__ import annotations
+
+import json
+import re
+from typing import Any, Callable
+
+from .sa3_prompts import SYSTEM_PROMPTS, TRACK_TYPE_PREFIXES
+
+Generate = Callable[[str, str, int, float, "int | None"], "tuple[str, int]"]
+
+LANGUAGES = {
+    "ru": "Russian", "en": "English", "uk": "Ukrainian", "de": "German", "fr": "French", "es": "Spanish",
+    "it": "Italian", "pt": "Portuguese", "pl": "Polish", "ja": "Japanese", "ko": "Korean", "zh": "Chinese",
+}
+
+
+class TaskError(Exception):
+    pass
+
+
+def language_name(code: str | None, idea: str) -> str:
+    if code and code in LANGUAGES:
+        return LANGUAGES[code]
+    # The model answers in English when told "the language of the idea": say it outright (RFC 0002, section 8).
+    return "Russian" if re.search(r"[а-яё]", idea, re.IGNORECASE) else "English"
+
+
+def parse_json(reply: str) -> dict[str, Any]:
+    """The first JSON object in the reply; an unterminated string or object is closed before giving up."""
+    start = reply.find("{")
+    if start < 0:
+        raise TaskError("no JSON in the reply")
+    body = reply[start:]
+    end = body.rfind("}")
+    candidates = [body[: end + 1]] if end >= 0 else []
+    # a reply cut short: close the string if a quote is open, then the object
+    repaired = body.rstrip().rstrip(",")
+    if repaired.count('"') % 2 == 1:
+        repaired += '"'
+    repaired += "}" * max(1, repaired.count("{") - repaired.count("}"))
+    candidates.append(repaired)
+    for text in candidates:
+        try:
+            data = json.loads(text)
+            if isinstance(data, dict):
+                return data
+        except ValueError:
+            continue
+    raise TaskError("the reply is not valid JSON")
+
+
+# ---------------------------------------------------------------- Stable Audio 3
+
+SA3_KINDS = {"music": "Music", "instrument": "Instrument", "one_shot": "One-shot", "sfx": "SFX"}
+_ARTIFACT_RE = re.compile(r"[\[\]*#]")
+_VOCAL_RE = re.compile(r"\b(vocals?|singing|singer|female|male|voice|voices|chorus|rap|rapper|chant(ing)?|lyrics?)\b", re.I)
+_LENGTH_RE = re.compile(r"\.?\s*Length:\s*(\d+)\s*seconds\.?\s*$", re.I)
+_BPM_RE = re.compile(r"\bBPM:\s*(\d+(?:\.\d+)?)", re.I)
+
+
+def _sa3_has_artifacts(text: str) -> bool:
+    # Stable Audio's own reprompt rejects these: markup, vocals (it makes instrumentals), no length, too long.
+    return bool(_ARTIFACT_RE.search(text)) or bool(_VOCAL_RE.search(text)) or not _LENGTH_RE.search(text) or len(text.split()) > 45
+
+
+def _sa3_classify(generate: Generate, idea: str) -> str:
+    label, _ = generate(SYSTEM_PROMPTS["Classifier"], f"Input: {idea}\nOutput: ", 16, 0.1, None)
+    label = label.strip().lower()
+    if "music_genre" in label:
+        return "music"
+    if "one_shot" in label:
+        return "one_shot"
+    if "instrument" in label:
+        return "instrument"
+    return "sfx"
+
+
+def sa3(generate: Generate, idea: str, kind: str | None = None, seed: int | None = None) -> dict[str, Any]:
+    category = kind if kind in SA3_KINDS else _sa3_classify(generate, idea)
+    reply = ""
+    for attempt in range(3):
+        reply, _ = generate(SYSTEM_PROMPTS[SA3_KINDS[category]], f"Input: {idea}\nOutput: ", 128, 1.11,
+                            None if seed is None else seed + attempt)
+        if not _sa3_has_artifacts(reply):
+            break
+    text = reply.strip()
+    if text.startswith("- "):
+        text = text[2:]
+    text = text[:1].upper() + text[1:] if text else text
+    bpm = _BPM_RE.search(text)
+    length = _LENGTH_RE.search(text)
+    prefix = TRACK_TYPE_PREFIXES.get("instrument" if category == "one_shot" else category, "")
+    return {
+        "category": category,
+        "prompt": prefix + text,
+        "bpm": float(bpm.group(1)) if bpm else None,
+        "duration": int(length.group(1)) if length else None,
+    }
+
+
+# ---------------------------------------------------------------- YuE2
+
+YUE2_SONG = """You write songs for YuE2, a model that sings full songs. Answer with one JSON object and nothing else:
+{"style": "<genre, mood, instruments, vocal type (female vocal / male vocal), tempo feel; comma separated, in English>",
+ "lyrics": "<the song in {lang}, each section starting with its label on its own line: [verse], [chorus], [bridge], [outro]>"}
+Structure: [verse], [chorus], [verse], [chorus], [bridge], [chorus], [outro]. Short, singable lines that rhyme,
+four to six lines per section. The lyrics must be in {lang}; the style stays in English."""
+
+
+def yue2_song(generate: Generate, idea: str, language: str | None = None, seed: int | None = None) -> dict[str, Any]:
+    lang = language_name(language, idea)
+    last: Exception | None = None
+    for attempt in range(2):
+        reply, _ = generate(YUE2_SONG.replace("{lang}", lang), idea, 900, 0.8, None if seed is None else seed + attempt)
+        try:
+            data = parse_json(reply)
+            style, lyrics = str(data.get("style", "")).strip(), str(data.get("lyrics", "")).strip()
+            if style and "[" in lyrics:
+                return {"style": style, "lyrics": lyrics, "language": lang}
+            last = TaskError("the reply has no style or no sectioned lyrics")
+        except TaskError as exc:
+            last = exc
+    raise TaskError(str(last))
+
+
+# ---------------------------------------------------------------- ACE-Step (when its own LM is not running)
+
+ACE = """You write prompts for ACE-Step, a music generation model. Answer with one JSON object and nothing else:
+{"caption": "<genre, mood, instruments, production, vocal type; one comma separated line in English>",
+ "lyrics": "<{lyrics_rule}>",
+ "bpm": <integer 60-180>, "keyscale": "<like A minor>", "duration": <seconds, 60-240>}"""
+ACE_SONG_LYRICS = "the song in {lang} with section labels on their own lines: [Verse], [Chorus], [Bridge], [Outro]; short rhyming lines"
+ACE_INSTRUMENTAL_LYRICS = "[Instrumental]"
+ACE_INSTRUMENTAL_NOTE = "\nThis is an instrumental: the caption names no voice or vocals and ends with \"instrumental\"."
+
+
+def ace(generate: Generate, idea: str, instrumental: bool, language: str | None = None, seed: int | None = None) -> dict[str, Any]:
+    lang = language_name(language, idea)
+    rule = ACE_INSTRUMENTAL_LYRICS if instrumental else ACE_SONG_LYRICS.replace("{lang}", lang)
+    last: Exception | None = None
+    for attempt in range(2):
+        system = ACE.replace("{lyrics_rule}", rule) + (ACE_INSTRUMENTAL_NOTE if instrumental else "")
+        reply, _ = generate(system, idea, 120 if instrumental else 900, 0.8,
+                            None if seed is None else seed + attempt)
+        try:
+            data = parse_json(reply)
+            caption = str(data.get("caption", "")).strip()
+            if not caption:
+                raise TaskError("the reply has no caption")
+            return {
+                "caption": caption,
+                "lyrics": "[Instrumental]" if instrumental else str(data.get("lyrics", "")).strip(),
+                "bpm": _int(data.get("bpm")),
+                "keyscale": str(data.get("keyscale") or "").strip() or None,
+                "duration": _int(data.get("duration")),
+                "language": None if instrumental else lang,
+            }
+        except TaskError as exc:
+            last = exc
+    raise TaskError(str(last))
+
+
+def _int(v: Any) -> int | None:
+    try:
+        return int(float(v))
+    except (TypeError, ValueError):
+        return None
+
+
+TASKS = ("sa3", "yue2-song", "ace-song", "ace-instrumental")
+
+
+def run(task: str, generate: Generate, idea: str, *, language: str | None = None, kind: str | None = None,
+        seed: int | None = None) -> dict[str, Any]:
+    idea = idea.strip()
+    if not idea:
+        raise TaskError("the idea is empty")
+    if task == "sa3":
+        return sa3(generate, idea, kind, seed)
+    if task == "yue2-song":
+        return yue2_song(generate, idea, language, seed)
+    if task in ("ace-song", "ace-instrumental"):
+        return ace(generate, idea, task == "ace-instrumental", language, seed)
+    raise TaskError(f"unknown task '{task}', one of {TASKS}")

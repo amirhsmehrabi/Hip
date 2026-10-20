@@ -27,3 +27,5 @@ Thumbs.db
 external/sa3-server/.venv/
 external/sa3-server/output/
 external/sa3-server/uv.lock
+external/prompt-assistant/.venv/
+external/prompt-assistant/uv.lock

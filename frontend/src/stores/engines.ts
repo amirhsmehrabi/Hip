@@ -1,6 +1,8 @@
 import { acceptHMRUpdate, defineStore } from 'pinia'
 import * as api from '../api/engines'
 import type { CpuSampler, CpuSamplerSettings, EngineId, EnginesState } from '../api/engines'
+import * as assistantApi from '../api/assistant'
+import type { AssistantSettings, AssistantState } from '../api/assistant'
 import { useFeaturesStore } from './features'
 
 const TICK_MS = 1500
@@ -15,6 +17,8 @@ export const useEnginesStore = defineStore('engines', {
   state: () => ({
     state: null as EnginesState | null,
     cpu: null as CpuSampler | null,
+    /** The prompt assistant (RFC 0002). */
+    assistant: null as AssistantState | null,
     loadError: null as string | null,
     _timer: null as ReturnType<typeof setTimeout> | null,
     /** Pages that want the slow refresh (the Models page while it is open). */
@@ -23,9 +27,10 @@ export const useEnginesStore = defineStore('engines', {
   actions: {
     async load() {
       try {
-        const [state, cpu] = await Promise.all([api.getEngines(), api.getCpuSampler()])
+        const [state, cpu, assistant] = await Promise.all([api.getEngines(), api.getCpuSampler(), assistantApi.getAssistant()])
         this._apply(state)
         this.cpu = cpu
+        this.assistant = assistant
         this.loadError = null
       } catch (e) {
         this.loadError = e instanceof Error ? e.message : String(e)
@@ -60,6 +65,20 @@ export const useEnginesStore = defineStore('engines', {
     async stopCpu() {
       this.cpu = await api.stopCpuSampler()
     },
+    async assistantDo(action: 'start' | 'stop' | 'download' | 'cancel' | 'delete', model?: string) {
+      const call = {
+        start: () => assistantApi.startAssistant(),
+        stop: () => assistantApi.stopAssistant(),
+        download: () => assistantApi.downloadAssistantModel(model as string),
+        cancel: () => assistantApi.cancelAssistantModel(model as string),
+        delete: () => assistantApi.deleteAssistantModel(model as string),
+      }[action]
+      this.assistant = await call()
+      this._follow()
+    },
+    async saveAssistant(settings: AssistantSettings) {
+      this.assistant = await assistantApi.saveAssistant(settings)
+    },
     _apply(next: EnginesState) {
       const before = new Set(this.state ? Object.values(this.state.engines).flatMap((e) => (e.parts ?? []).filter((p) => p.installed).map((p) => p.id)) : [])
       const prev = this.state
@@ -77,7 +96,7 @@ export const useEnginesStore = defineStore('engines', {
     },
     _follow() {
       if (this._timer) return
-      const downloading = !!this.state?.downloading
+      const downloading = !!this.state?.downloading || !!this.assistant?.downloading
       if (!downloading && this._watchers === 0) return
       this._timer = setTimeout(async () => {
         this._timer = null

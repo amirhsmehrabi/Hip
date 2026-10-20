@@ -5,7 +5,8 @@
 //   aceBase - ACE-Step's base model, which the editor's AI arranger needs to add parts;
 //   aceXl   - ACE-Step's XL base model (about 20 GB): better parts, but it wants a 16 GB card or more;
 //   stableAudio - the Stable Audio 3 server environment. Its weights are gated on Hugging Face, so the app's
-//             Stable Audio 3 page downloads them with the user's token, not the installer.
+//             Stable Audio 3 page downloads them with the user's token, not the installer;
+//   assistant - the prompt assistant's environment (RFC 0002); its model comes from the app's Models page.
 // ACE-Step itself and the tools are always installed. Nothing already on disk is ever unselected or removed:
 // the selection is widened by what is installed, so a later run can only add.
 const fs = require('node:fs');
@@ -13,13 +14,13 @@ const path = require('node:path');
 const { IS_WINDOWS } = require('../paths');
 
 const PRECISIONS = ['q8_0', 'q4_0'];
-const FEATURE_IDS = ['yue2', 'demucs', 'aceBase', 'aceXl', 'stableAudio'];
+const FEATURE_IDS = ['yue2', 'demucs', 'aceBase', 'aceXl', 'stableAudio', 'assistant'];
 
 /** Which components each feature brings. */
-const FEATURE_COMPONENTS = { yue2: ['engine', 'weights'], demucs: ['demucs'], aceBase: ['ace-base-model'], aceXl: ['ace-xl-model'], stableAudio: ['stable-audio'] };
+const FEATURE_COMPONENTS = { yue2: ['engine', 'weights'], demucs: ['demucs'], aceBase: ['ace-base-model'], aceXl: ['ace-xl-model'], stableAudio: ['stable-audio'], assistant: ['prompt-assistant'] };
 
 /** First-run defaults: everything but the arranger's base models and Stable Audio 3, YuE2 in q8_0 only. */
-const DEFAULT_SELECTION = Object.freeze({ yue2: true, yue2Precisions: ['q8_0'], demucs: true, aceBase: false, aceXl: false, stableAudio: false });
+const DEFAULT_SELECTION = Object.freeze({ yue2: true, yue2Precisions: ['q8_0'], demucs: true, aceBase: false, aceXl: false, stableAudio: false, assistant: false });
 
 /** What is on disk now, checked the way the backend checks it (backend/app/features.py). */
 function detectInstalled(L) {
@@ -33,6 +34,7 @@ function detectInstalled(L) {
     aceBase: fs.existsSync(path.join(L.aceStep, 'checkpoints', 'acestep-v15-base', 'model.safetensors')),
     aceXl: fs.existsSync(path.join(L.aceStep, 'checkpoints', 'acestep-v15-xl-base', 'model-00004-of-00004.safetensors')),
     stableAudio: fs.existsSync(path.join(L.stableAudio, '.venv')),
+    assistant: fs.existsSync(path.join(L.promptAssistant, '.venv')),
   };
 }
 
@@ -43,7 +45,7 @@ function detectInstalled(L) {
 function resolveSelection(saved, installed, { legacyInstall = false } = {}) {
   const base = saved && typeof saved === 'object'
     ? saved
-    : legacyInstall ? { yue2: true, yue2Precisions: [...PRECISIONS], demucs: true, aceBase: installed.aceBase, aceXl: installed.aceXl, stableAudio: installed.stableAudio } : DEFAULT_SELECTION;
+    : legacyInstall ? { yue2: true, yue2Precisions: [...PRECISIONS], demucs: true, aceBase: installed.aceBase, aceXl: installed.aceXl, stableAudio: installed.stableAudio, assistant: installed.assistant } : DEFAULT_SELECTION;
   const precisions = new Set([...(Array.isArray(base.yue2Precisions) ? base.yue2Precisions : []), ...installed.yue2Precisions]);
   const sel = {
     yue2: !!base.yue2 || installed.yue2,
@@ -52,6 +54,7 @@ function resolveSelection(saved, installed, { legacyInstall = false } = {}) {
     aceBase: !!base.aceBase || installed.aceBase,
     aceXl: !!base.aceXl || installed.aceXl,
     stableAudio: !!base.stableAudio || installed.stableAudio,
+    assistant: !!base.assistant || installed.assistant,
   };
   // YuE2 without a precision cannot run: fall back to q8_0.
   if (sel.yue2 && sel.yue2Precisions.length === 0) sel.yue2Precisions = ['q8_0'];
@@ -77,6 +80,7 @@ function featureSizes(manifest, platform, selection) {
     aceBase: manifest.aceBaseModel.approxBytes,
     aceXl: manifest.aceXlModel.approxBytes,
     stableAudio: manifest.stableAudio.approxBytes,
+    assistant: manifest.promptAssistant.approxBytes,
   };
 }
 

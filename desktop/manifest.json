@@ -94,6 +94,10 @@
     "approxBytes": 4500000000,
     "model": "htdemucs"
   },
+  "promptAssistant": {
+    "_comment": "The prompt assistant's environment (RFC 0002): the same torch as Stable Audio 3, so it is mostly linked from the uv cache when both are picked. Its model (Qwen3.5) is downloaded from the app's Models page.",
+    "approxBytes": 4000000000
+  },
   "stableAudio": {
     "_comment": "The sa3-server environment (torch 2.7.1, Flash Attention on Windows/Linux). The weights are gated on Hugging Face and are downloaded from the app, not here.",
     "approxBytes": 4500000000
