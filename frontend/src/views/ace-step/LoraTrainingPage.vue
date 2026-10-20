@@ -12,6 +12,7 @@ import ProgressBar from '../../components/shared/ProgressBar.vue'
 import CollapsibleDetails from '../../components/shared/CollapsibleDetails.vue'
 import HelpModal from '../../components/shared/HelpModal.vue'
 import HelpIconButton from '../../components/shared/HelpIconButton.vue'
+import AceStepTabs from './AceStepTabs.vue'
 import type { DatasetSample } from '../../api/aceStepTraining'
 
 const orchestrator = useOrchestratorStore()
@@ -277,6 +278,7 @@ async function onExport() {
 
 <template>
   <div class="space-y-6">
+    <AceStepTabs />
     <ModelOfflineBanner v-if="!isRunning" model-id="ace_step" :status="modelStatus" :error="modelError" />
 
     <template v-else>

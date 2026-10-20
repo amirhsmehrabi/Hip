@@ -11,7 +11,8 @@ import ChevronIcon from './icons/ChevronIcon.vue'
 // load and temperature) in a panel on click. A meter turns amber from 80 % and red from 92 %: that is where a
 // render starts to swap or runs out of memory. Same as Remiqora Video's header.
 /** stacked: RAM above video memory, in aligned columns (the header's layout); the numbers only from 1536 px,
- *  narrower the header needs the room, and they are in the panel a click away. */
+ *  narrower the header needs the room, and they are in the panel a click away. Below 1280 px the two meters
+ *  become two small rings with their names under them, so the memory stays in sight on any window. */
 const props = defineProps<{ stacked?: boolean }>()
 const { t } = useI18n()
 const system = useSystemStore()
@@ -74,6 +75,19 @@ const ramHolders = computed(() =>
     .filter(([, bytes]) => bytes >= 50 * 1024 ** 2)
     .map(([key, bytes]) => ({ key, bytes, label: t(`resources.holder.${key}`) })),
 )
+/** The ring's colour follows the same thresholds as the bars. */
+const ringLevel = (used: number, total: number) => {
+  const f = used / total
+  return f >= 0.92 ? 'text-status-failed' : f >= 0.8 ? 'text-status-queued' : 'text-accent1'
+}
+const RING_C = 2 * Math.PI * 8
+const meters = computed(() => [
+  ram.value && { key: 'ram', label: t('resources.ram'), ...ram.value },
+  vram.value && { key: 'vram', label: t('resources.vram'), ...vram.value },
+].filter((m): m is NonNullable<typeof m> => !!m))
+const ringTitle = (m: { label: string; used: number; total: number }) =>
+  `${m.label}: ${gb(m.used)} / ${gb(m.total)} ${t('resources.unit')} · ${pct(m.used, m.total)}%`
+
 const vramTitle = computed(() => vramHolders.value.map((h) => `${h.label}: ${gb(h.bytes)} ${t('resources.unit')}`).join(' · '))
 
 function onDocClick(e: MouseEvent) {
@@ -99,7 +113,7 @@ onBeforeUnmount(() => {
       type="button"
       class="rounded-lg border px-2.5 py-0.5 text-xs text-text-dim transition-colors hover:border-accent1/50 hover:bg-panel hover:text-text"
       :class="[
-        props.stacked ? 'grid grid-cols-[auto_3rem_auto] items-center gap-x-2 gap-y-1 py-1.5 2xl:grid-cols-[auto_3rem_auto_auto]' : 'flex items-center gap-3',
+        props.stacked ? 'flex items-center gap-2 py-1 xl:grid xl:grid-cols-[auto_3rem_auto] xl:gap-x-2 xl:gap-y-1 xl:py-1.5 2xl:grid-cols-[auto_3rem_auto_auto]' : 'flex items-center gap-3',
         open ? 'border-accent1/50 bg-panel text-text' : 'border-border bg-panel-2/40',
       ]"
       :aria-expanded="open"
@@ -107,8 +121,18 @@ onBeforeUnmount(() => {
       :title="vramTitle || t('resources.title')"
       @click="open = !open"
     >
-      <span v-for="m in [ram && { key: 'ram', label: t('resources.ram'), ...ram }, vram && { key: 'vram', label: t('resources.vram'), ...vram }]" :key="m ? m.key : 'none'" class="contents">
-        <span v-if="m" :class="props.stacked ? 'contents' : 'flex items-center gap-1.5'">
+      <!-- narrow window: a ring per meter, its name under it -->
+      <template v-if="props.stacked">
+        <span v-for="m in meters" :key="`ring-${m.key}`" class="flex flex-col items-center gap-0.5 xl:hidden" :title="ringTitle(m)">
+          <svg viewBox="0 0 20 20" class="h-5 w-5 -rotate-90" :class="ringLevel(m.used, m.total)" role="progressbar" :aria-valuenow="pct(m.used, m.total)" aria-valuemin="0" aria-valuemax="100" :aria-label="m.label">
+            <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" stroke-opacity="0.18" stroke-width="3" />
+            <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" class="transition-[stroke-dasharray] duration-500" :stroke-dasharray="`${(pct(m.used, m.total) / 100) * RING_C} ${RING_C}`" />
+          </svg>
+          <span class="text-[10px] leading-3 whitespace-nowrap">{{ m.label }}</span>
+        </span>
+      </template>
+      <span v-for="m in meters" :key="m.key" :class="props.stacked ? 'hidden xl:contents' : 'contents'">
+        <span :class="props.stacked ? 'contents' : 'flex items-center gap-1.5'">
           <span class="whitespace-nowrap text-left">{{ m.label }}</span>
           <span class="flex h-1.5 w-12 overflow-hidden rounded-full bg-panel-2" role="progressbar" :aria-valuenow="pct(m.used, m.total)" aria-valuemin="0" aria-valuemax="100" :aria-label="m.label">
             <template v-if="m.key === 'vram' && segments.length">

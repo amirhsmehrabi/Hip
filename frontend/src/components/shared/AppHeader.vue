@@ -13,7 +13,6 @@ import EditorHotkeysModal from '../editor/EditorHotkeysModal.vue'
 import AiArrangerGuide from '../editor/AiArrangerGuide.vue'
 import ResourceMeters from './ResourceMeters.vue'
 import MicIcon from './icons/MicIcon.vue'
-import TargetIcon from './icons/TargetIcon.vue'
 import TimelineIcon from './icons/TimelineIcon.vue'
 import WaveIcon from './icons/WaveIcon.vue'
 import PulseIcon from './icons/PulseIcon.vue'
@@ -90,11 +89,16 @@ function installed(id: ModelId): boolean {
   const feature = MODEL_FEATURE[id]
   return !feature || features.has(feature)
 }
-/** The engine tabs after ACE-Step (whose tab is followed by LoRA training, so it is written out). */
-const OTHER_ENGINES: { id: ModelId; icon: typeof MicIcon }[] = [
+/** The engines, one group in the header: one of them holds the GPU at a time. */
+const ENGINES: { id: ModelId; icon: typeof MicIcon }[] = [
+  { id: 'ace_step', icon: WaveIcon },
   { id: 'yue2', icon: MicIcon },
   { id: 'stable_audio', icon: PulseIcon },
 ]
+/** An engine's tab is current on its page and on the pages under it (ACE-Step's LoRA training). */
+function onEngine(id: ModelId): boolean {
+  return route.name === MODEL_ROUTES[id] || (id === 'ace_step' && route.name === 'ace-step-lora')
+}
 const STATUS_TEXT_CLASSES: Record<ModelRuntimeStatus, string> = {
   stopped: 'text-text-dim',
   starting: 'text-status-queued',
@@ -131,12 +135,12 @@ async function onSelect(id: ModelId) {
 <template>
   <header ref="headerEl" class="sticky top-0 z-40 border-b border-border bg-bg/90 backdrop-blur">
     <!-- One row over the whole window: the brand, the sections centred on the window, the tools. As the window
-         narrows, things drop out in order (the tagline, the memory numbers, the brand name, the descriptions) rather
-         than wrapping; on a phone the tabs scroll sideways. -->
-    <div class="flex h-[4.75rem] items-stretch gap-4 px-4 sm:px-6 lg:grid lg:grid-cols-[1fr_auto_1fr] lg:gap-6">
+         narrows, things drop out in order (the tagline, the memory numbers, the brand name; below 1280 px the memory
+         meters turn into two rings) rather than wrapping. On a phone the tabs get a row of their own and scroll sideways. -->
+    <div class="flex flex-wrap items-stretch gap-x-4 px-4 sm:h-[4.75rem] sm:flex-nowrap sm:px-6 lg:grid lg:grid-cols-[1fr_auto_1fr] lg:gap-4 xl:gap-6">
       <!-- the mark is as tall as the two lines next to it (24 + 16 px); the R is drawn, not set in a
            font - an SVG <text> falls back to a different face and looks uneven -->
-      <router-link to="/" class="flex shrink-0 items-center gap-2.5 self-center justify-self-start text-text">
+      <router-link to="/" class="flex h-14 shrink-0 items-center gap-2.5 self-center justify-self-start text-text sm:h-auto">
         <span class="accent-gradient flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-md shadow-accent1/20">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="white" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M7 19V5h5.5a3.75 3.75 0 0 1 0 7.5H7M12.5 12.5 17 19" />
@@ -149,12 +153,11 @@ async function onSelect(id: ModelId) {
         </span>
       </router-link>
 
-      <!-- The sections as tabs: an icon, the name, what it is for; the current one is underlined on the header's edge.
-           An engine's light tells whether it runs, and its tab opens the page and starts it on the GPU. LoRA training
-           is ACE-Step's, so it sits right beside it with no divider; dividers only part the groups. -->
+      <!-- The sections: the idea, the engines as one group, the editor. The current page is underlined (the idea,
+           the editor) or raised in the group (an engine). LoRA training is a tab inside ACE-Step's page. -->
       <nav
         ref="navEl"
-        class="flex min-w-0 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        class="order-last flex h-12 min-w-0 basis-full items-stretch overflow-x-auto [scrollbar-width:none] sm:order-none sm:h-auto sm:basis-auto [&::-webkit-scrollbar]:hidden"
         :class="navMore && '[mask-image:linear-gradient(to_right,#000_calc(100%-3rem),transparent)]'"
         :aria-label="t('header.navLabel')"
         @scroll.passive="updateNavMore"
@@ -162,102 +165,54 @@ async function onSelect(id: ModelId) {
         <!-- the simplest way in comes first: an idea in words, the prompt is written for whichever engine -->
         <router-link
           to="/idea"
-          class="relative flex shrink-0 items-center gap-2.5 px-3 transition-colors"
+          class="relative flex shrink-0 items-center gap-2 px-2 transition-colors xl:px-3"
           :class="onIdea ? 'text-text' : 'text-text-dim hover:text-text'"
           :title="t('header.desc.idea')"
           :aria-current="onIdea ? 'page' : undefined"
         >
           <SparklesIcon class="h-[18px] w-[18px] shrink-0" :class="onIdea && 'text-accent1'" />
-          <!-- no second line: the tabs already crowd the header, what it does is in the tooltip -->
           <span class="text-[15px] leading-5 whitespace-nowrap" :class="onIdea ? 'font-semibold' : 'font-medium'">{{ t('header.idea') }}</span>
-          <span v-if="onIdea" class="accent-gradient absolute inset-x-3 bottom-0 h-0.5 rounded-full" aria-hidden="true"></span>
+          <span v-if="onIdea" class="accent-gradient absolute inset-x-2 bottom-0 h-0.5 rounded-full xl:inset-x-3" aria-hidden="true"></span>
         </router-link>
 
-        <span class="mx-2 h-8 w-px shrink-0 self-center bg-border" aria-hidden="true"></span>
-
-        <button
-          type="button"
-          class="relative flex shrink-0 items-center gap-2.5 px-3 text-left transition-colors"
-          :class="route.name === MODEL_ROUTES.ace_step ? 'text-text' : 'text-text-dim hover:text-text'"
-          :title="engineTitle('ace_step')"
-          :aria-current="route.name === MODEL_ROUTES.ace_step ? 'page' : undefined"
-          @click="onSelect('ace_step')"
-        >
-          <WaveIcon class="h-[18px] w-[18px] shrink-0" :class="route.name === MODEL_ROUTES.ace_step && 'text-accent1'" />
-          <span class="flex flex-col">
-            <span class="flex items-center gap-2 text-[15px] leading-5 whitespace-nowrap" :class="route.name === MODEL_ROUTES.ace_step ? 'font-semibold' : 'font-medium'">
-              {{ MODEL_LABELS.ace_step }}
-              <span class="h-2 w-2 shrink-0 rounded-full" :class="LED_CLASSES[statusOf('ace_step')]" aria-hidden="true"></span>
-              <span v-if="statusShown('ace_step')" class="hidden text-[11px] font-medium xl:inline" :class="STATUS_TEXT_CLASSES[statusOf('ace_step')]">{{ t(STATUS_LABEL_KEYS[statusOf('ace_step')]) }}</span>
-            </span>
-            <span class="mt-0.5 hidden text-xs leading-4 font-normal whitespace-nowrap text-text-dim xl:block">{{ t('header.desc.ace') }}</span>
-          </span>
-          <span v-if="route.name === MODEL_ROUTES.ace_step" class="accent-gradient absolute inset-x-3 bottom-0 h-0.5 rounded-full" aria-hidden="true"></span>
-        </button>
-        <router-link
-          to="/ace-step/lora"
-          class="relative flex shrink-0 items-center gap-2 pr-3 pl-1.5 transition-colors"
-          :class="route.name === 'ace-step-lora' ? 'text-text' : 'text-text-dim hover:text-text'"
-          :title="t('header.loraTitle')"
-          :aria-current="route.name === 'ace-step-lora' ? 'page' : undefined"
-        >
-          <TargetIcon class="h-4 w-4 shrink-0" :class="route.name === 'ace-step-lora' && 'text-accent1'" />
-          <span class="flex flex-col">
-            <span class="text-sm leading-5 whitespace-nowrap" :class="route.name === 'ace-step-lora' ? 'font-semibold' : 'font-medium'">{{ t('header.lora') }}</span>
-            <span class="mt-0.5 hidden text-xs leading-4 whitespace-nowrap text-text-dim xl:block">{{ t('header.desc.lora') }}</span>
-          </span>
-          <span v-if="route.name === 'ace-step-lora'" class="accent-gradient absolute inset-x-0.5 bottom-0 h-0.5 rounded-full" aria-hidden="true"></span>
-        </router-link>
-
-        <span class="mx-2 h-8 w-px shrink-0 self-center bg-border" aria-hidden="true"></span>
-
-        <template v-for="engine in OTHER_ENGINES" :key="engine.id">
+        <!-- the engines as one group: a light tells whether each runs, a click opens its page and starts it on the
+             GPU (the running one stops). What each is for and its state are in the tooltip. -->
+        <div role="group" :aria-label="t('header.engines')" class="mx-1 flex shrink-0 items-center gap-0.5 self-center rounded-xl border border-border bg-panel-2/40 p-1">
           <button
+            v-for="engine in ENGINES"
+            :key="engine.id"
             type="button"
-            class="relative flex shrink-0 items-center gap-2.5 px-3 text-left transition-colors"
-            :class="route.name === MODEL_ROUTES[engine.id] ? 'text-text' : 'text-text-dim hover:text-text'"
+            class="flex h-9 items-center gap-2 rounded-lg px-2 text-left transition-colors xl:px-3"
+            :class="onEngine(engine.id) ? 'bg-panel text-text shadow-sm shadow-black/20' : 'text-text-dim hover:bg-panel/60 hover:text-text'"
             :title="engineTitle(engine.id)"
-            :aria-current="route.name === MODEL_ROUTES[engine.id] ? 'page' : undefined"
+            :aria-current="onEngine(engine.id) ? 'page' : undefined"
             @click="onSelect(engine.id)"
           >
-            <component :is="engine.icon" class="h-[18px] w-[18px] shrink-0" :class="route.name === MODEL_ROUTES[engine.id] && 'text-accent1'" />
-            <span class="flex flex-col">
-              <span class="flex items-center gap-2 text-[15px] leading-5 whitespace-nowrap" :class="route.name === MODEL_ROUTES[engine.id] ? 'font-semibold' : 'font-medium'">
-                {{ MODEL_LABELS[engine.id] }}
-                <!-- left out at install: no light, it cannot run; it says so instead -->
-                <span v-if="!installed(engine.id)" class="hidden rounded border border-border px-1.5 text-[11px] font-medium text-text-dim xl:inline">{{ t('notInstalled.installed') }}</span>
-                <template v-else>
-                  <span class="h-2 w-2 shrink-0 rounded-full" :class="LED_CLASSES[statusOf(engine.id)]" aria-hidden="true"></span>
-                  <span v-if="statusShown(engine.id)" class="hidden text-[11px] font-medium xl:inline" :class="STATUS_TEXT_CLASSES[statusOf(engine.id)]">{{ t(STATUS_LABEL_KEYS[statusOf(engine.id)]) }}</span>
-                </template>
-              </span>
-              <span class="mt-0.5 hidden text-xs leading-4 font-normal whitespace-nowrap text-text-dim xl:block">{{ t(DESC_KEYS[engine.id]) }}</span>
-            </span>
-            <span v-if="route.name === MODEL_ROUTES[engine.id]" class="accent-gradient absolute inset-x-3 bottom-0 h-0.5 rounded-full" aria-hidden="true"></span>
+            <component :is="engine.icon" class="h-[17px] w-[17px] shrink-0" :class="onEngine(engine.id) && 'text-accent1'" />
+            <span class="text-[14px] leading-5 whitespace-nowrap" :class="onEngine(engine.id) ? 'font-semibold' : 'font-medium'">{{ MODEL_LABELS[engine.id] }}</span>
+            <!-- left out at install: no light, it cannot run -->
+            <span v-if="installed(engine.id)" class="h-2 w-2 shrink-0 rounded-full" :class="LED_CLASSES[statusOf(engine.id)]" aria-hidden="true"></span>
+            <span v-if="installed(engine.id) && statusShown(engine.id)" class="hidden text-[11px] font-medium 2xl:inline" :class="STATUS_TEXT_CLASSES[statusOf(engine.id)]">{{ t(STATUS_LABEL_KEYS[statusOf(engine.id)]) }}</span>
           </button>
-
-          <span class="mx-2 h-8 w-px shrink-0 self-center bg-border" aria-hidden="true"></span>
-        </template>
+        </div>
 
         <router-link
           to="/editor"
-          class="relative flex shrink-0 items-center gap-2.5 px-3 transition-colors"
+          class="relative flex shrink-0 items-center gap-2 px-2 transition-colors xl:px-3"
           :class="onEditor ? 'text-text' : 'text-text-dim hover:text-text'"
           :title="t('header.desc.editor')"
           :aria-current="onEditor ? 'page' : undefined"
         >
           <TimelineIcon class="h-[18px] w-[18px] shrink-0" :class="onEditor && 'text-accent1'" />
-          <span class="flex flex-col">
-            <span class="text-[15px] leading-5 whitespace-nowrap" :class="onEditor ? 'font-semibold' : 'font-medium'">{{ t('header.editor') }}</span>
-            <span class="mt-0.5 hidden text-xs leading-4 whitespace-nowrap text-text-dim xl:block">{{ t('header.desc.editor') }}</span>
-          </span>
-          <span v-if="onEditor" class="accent-gradient absolute inset-x-3 bottom-0 h-0.5 rounded-full" aria-hidden="true"></span>
+          <span class="text-[15px] leading-5 whitespace-nowrap" :class="onEditor ? 'font-semibold' : 'font-medium'">{{ t('header.editor') }}</span>
+          <span v-if="onEditor" class="accent-gradient absolute inset-x-2 bottom-0 h-0.5 rounded-full xl:inset-x-3" aria-hidden="true"></span>
         </router-link>
       </nav>
 
       <div class="ml-auto flex shrink-0 items-center gap-1 self-center lg:ml-0 lg:justify-self-end">
-        <!-- RAM above video memory; a click opens the details and the button that unloads the model -->
-        <ResourceMeters stacked class="mr-3 hidden lg:block" />
+        <!-- RAM above video memory, always in sight (two rings on a narrow window); a click opens the details and
+             the button that unloads the model -->
+        <ResourceMeters stacked class="mr-1 sm:mr-3" />
         <button
           type="button"
           class="h-9 rounded-lg px-2.5 text-xs font-semibold text-text-dim transition-colors hover:bg-panel-2 hover:text-text"
