@@ -44,7 +44,7 @@ const retry = computed(() => props.download?.status === 'failed' || props.downlo
 </script>
 
 <template>
-  <li class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 py-2.5 sm:grid-cols-[minmax(0,1fr)_4.5rem_minmax(11rem,auto)]">
+  <li class="-mx-2 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 rounded-lg px-2 py-2.5 transition-colors hover:bg-panel-2/50 sm:grid-cols-[minmax(0,1fr)_4.5rem_minmax(11rem,auto)]">
     <div class="min-w-0">
       <p class="truncate text-sm font-medium text-text">{{ name }}</p>
       <p v-if="hint" class="text-xs leading-relaxed text-text-dim">{{ hint }}</p>
@@ -59,7 +59,7 @@ const retry = computed(() => props.download?.status === 'failed' || props.downlo
         <button type="button" class="rounded-lg border border-border px-2.5 py-1 text-xs text-text-dim hover:text-text" @click="confirming = false">{{ t('models.deleteNo') }}</button>
       </template>
       <template v-else>
-        <span class="inline-flex items-center gap-1.5 rounded-full bg-status-done/10 px-2.5 py-1 text-xs text-status-done">
+        <span class="inline-flex items-center gap-1.5 rounded-full bg-status-done/15 px-2.5 py-1 text-xs text-status-done">
           <CheckIcon class="h-3.5 w-3.5" />{{ t('models.installed') }}
         </span>
         <button
@@ -90,7 +90,7 @@ const retry = computed(() => props.download?.status === 'failed' || props.downlo
     <div v-else class="col-span-2 flex flex-col items-end gap-1 sm:col-span-1">
       <button
         type="button"
-        class="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-accent1 disabled:opacity-50"
+        class="inline-flex items-center gap-1.5 rounded-lg border border-accent1/40 px-3 py-1.5 text-xs font-medium text-accent1 hover:bg-accent1/10 disabled:opacity-50 disabled:hover:bg-transparent"
         :disabled="blocked"
         :title="blocked ? blockedTitle : undefined"
         @click="emit('download')"
