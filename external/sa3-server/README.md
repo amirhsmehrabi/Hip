@@ -17,6 +17,10 @@ for Remiqora's backend, which runs it from the app's Stable Audio 3 page; `--log
 token from stdin and saves it). `medium`, `small-music` and `small-sfx` are gated: accept the
 licence on `stabilityai/stable-audio-3-<model>` first; the `-base` checkpoints are open.
 
+Off CUDA (`--device cpu` or `mps`) Flash Attention is switched off, since its kernels exist only for CUDA, and
+`--threads N` sets PyTorch's CPU threads. Remiqora runs a second instance this way on the CPU for the editor's
+Samples panel (`backend/app/sfx_cpu.py`), next to whatever engine holds the GPU.
+
 API (all under `/v1`): `GET /health`, `GET /v1/models`, `POST /v1/models/load`,
 `POST /v1/jobs` (multipart), `POST /v1/jobs/query`, `POST /v1/jobs/{id}/cancel`,
 `GET /v1/files/{name}`. See `rfcs/0001-stable-audio-3.md` in the repository root.

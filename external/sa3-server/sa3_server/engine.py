@@ -39,6 +39,19 @@ class Engine:
     def loading(self) -> str | None:
         return self._loading
 
+    def _disable_flash_attention_off_cuda(self) -> None:
+        """Stable Audio picks Flash Attention whenever the package imports, whatever the device; its kernels
+        exist only for CUDA, so on a CPU (or MPS) every attention call would fail. Clearing the module's
+        handles makes it fall back to PyTorch's own attention (SDPA)."""
+        if self.device_name() == "cuda":
+            return
+        from stable_audio_3.models import transformer
+
+        for attr in ("flash_attn_func", "flash_attn_kvpacked_func", "flash_attn_varlen_func"):
+            if getattr(transformer, attr, None) is not None:
+                setattr(transformer, attr, None)
+                log.info("%s: Flash Attention off (no CUDA)", attr)
+
     def load(self, name: str) -> Any:
         if name not in MODEL_SPECS:
             raise ValueError(f"unknown model '{name}'")
@@ -58,6 +71,8 @@ class Engine:
                 del model
                 self._free()
             from stable_audio_3 import StableAudioModel
+
+            self._disable_flash_attention_off_cuda()
 
             self._loading = name
             t0 = time.time()
