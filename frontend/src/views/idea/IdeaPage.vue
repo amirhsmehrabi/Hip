@@ -350,26 +350,48 @@ const guideOpen = ref(false)
         @keydown.ctrl.enter="write"
       ></textarea>
 
-      <!-- the engine, and the actions in a block of their own: both buttons always there and always as wide, so
-           nothing shifts while typing, writing or after a reset -->
-      <div class="mt-3 flex flex-wrap items-center gap-x-2 gap-y-2">
-        <div class="flex flex-wrap items-center gap-x-2 gap-y-2" role="radiogroup" :aria-label="t('idea.engine')">
-          <span class="mr-1 text-xs text-text-dim">{{ t('idea.engine') }}</span>
-          <button
-            v-for="e in ENGINES"
-            :key="e.id"
-            type="button"
-            role="radio"
-            :aria-checked="engine === e.id"
-            :disabled="!engineAvailable(e.id)"
-            :title="!engineAvailable(e.id) ? unavailableReason(e.id) : t(`idea.engineHint.${e.id}`)"
-            class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-            :class="engine === e.id ? 'border-accent1/50 bg-accent1/10 text-text' : 'border-border text-text-dim hover:border-text-dim hover:text-text'"
-            @click="engine = e.id"
-          >
-            <component :is="e.icon" class="h-4 w-4" :class="engine === e.id && 'text-accent1'" />{{ MODEL_LABELS[e.model] }}
-            <span class="h-1.5 w-1.5 rounded-full" :class="engineRunning(e.id) ? 'bg-status-done' : 'bg-text-dim/50'"></span>
-          </button>
+      <!-- the engine -->
+      <div class="mt-3 flex flex-wrap items-center gap-x-2 gap-y-2" role="radiogroup" :aria-label="t('idea.engine')">
+        <span class="mr-1 text-xs text-text-dim">{{ t('idea.engine') }}</span>
+        <button
+          v-for="e in ENGINES"
+          :key="e.id"
+          type="button"
+          role="radio"
+          :aria-checked="engine === e.id"
+          :disabled="!engineAvailable(e.id)"
+          :title="!engineAvailable(e.id) ? unavailableReason(e.id) : t(`idea.engineHint.${e.id}`)"
+          class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+          :class="engine === e.id ? 'border-accent1/50 bg-accent1/10 text-text' : 'border-border text-text-dim hover:border-text-dim hover:text-text'"
+          @click="engine = e.id"
+        >
+          <component :is="e.icon" class="h-4 w-4" :class="engine === e.id && 'text-accent1'" />{{ MODEL_LABELS[e.model] }}
+          <span class="h-1.5 w-1.5 rounded-full" :class="engineRunning(e.id) ? 'bg-status-done' : 'bg-text-dim/50'"></span>
+        </button>
+      </div>
+      <div v-if="engine === 'ace' && (assistantReady || aceRunning)" class="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-dim">
+        {{ t('idea.writer') }}
+        <ChipGroup v-model="writerPref" small :options="writerOptions" />
+      </div>
+
+      <!-- the footer: what will happen on the left, the actions on the right, on one line under a rule. Both buttons
+           are always there and always as wide, so nothing shifts while typing, writing or after a reset. -->
+      <div class="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-border/60 pt-3">
+        <div class="min-w-[15rem] flex-1 space-y-1 text-xs text-text-dim">
+          <p>{{ t(`idea.engineHint.${engine}`) }}</p>
+          <p class="leading-relaxed" :class="writer ? 'text-text-dim' : 'text-status-queued'">
+            <template v-if="writer === 'ace'">{{ t('idea.byAce') }}</template>
+            <template v-else-if="writer === 'assistant'">{{ assistantOnGpu ? t('idea.byAssistantGpu', { engine: MODEL_LABELS[engineInfo.model] }) : t(assistantOnCpu ? (instrumental ? 'idea.byAssistantCpuInstrumental' : 'idea.byAssistantCpu') : (instrumental ? 'idea.byAssistantInstrumental' : 'idea.byAssistant')) }}</template>
+            <template v-else-if="engine !== 'ace'">
+              {{ t('idea.noWriterAssistant') }} <RouterLink to="/models#assistant" class="text-accent1 underline">{{ t('idea.setupAssistant') }}</RouterLink>
+            </template>
+            <template v-else>
+              {{ t('idea.noWriter') }}
+              <button type="button" class="text-accent1 underline disabled:opacity-50" :disabled="orchestrator.switching" @click="startAce">{{ t('idea.startAce') }}</button>
+              · <RouterLink to="/models#assistant" class="text-accent1 underline">{{ t('idea.setupAssistant') }}</RouterLink>
+            </template>
+            <span v-if="writing && writer === 'ace'" class="ml-1">{{ t('idea.writingAce') }}</span>
+          </p>
         </div>
         <div class="ml-auto flex shrink-0 items-center gap-2">
           <button
@@ -401,24 +423,6 @@ const guideOpen = ref(false)
           </button>
         </div>
       </div>
-      <p class="mt-1.5 text-[11px] text-text-dim">{{ t(`idea.engineHint.${engine}`) }}</p>
-      <div v-if="engine === 'ace' && (assistantReady || aceRunning)" class="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-dim">
-        {{ t('idea.writer') }}
-        <ChipGroup v-model="writerPref" small :options="writerOptions" />
-      </div>
-      <p class="mt-2 text-xs leading-relaxed" :class="writer ? 'text-text-dim' : 'text-status-queued'">
-        <template v-if="writer === 'ace'">{{ t('idea.byAce') }}</template>
-        <template v-else-if="writer === 'assistant'">{{ assistantOnGpu ? t('idea.byAssistantGpu', { engine: MODEL_LABELS[engineInfo.model] }) : t(assistantOnCpu ? 'idea.byAssistantCpu' : 'idea.byAssistant') }}</template>
-        <template v-else-if="engine !== 'ace'">
-          {{ t('idea.noWriterAssistant') }} <RouterLink to="/models#assistant" class="text-accent1 underline">{{ t('idea.setupAssistant') }}</RouterLink>
-        </template>
-        <template v-else>
-          {{ t('idea.noWriter') }}
-          <button type="button" class="text-accent1 underline disabled:opacity-50" :disabled="orchestrator.switching" @click="startAce">{{ t('idea.startAce') }}</button>
-          · <RouterLink to="/models#assistant" class="text-accent1 underline">{{ t('idea.setupAssistant') }}</RouterLink>
-        </template>
-        <span v-if="writing && writer === 'ace'" class="ml-1">{{ t('idea.writingAce') }}</span>
-      </p>
       <PromptProgress v-if="writing && progress" :progress="progress" :stopping="stopping" class="mt-3" @stop="stopWriting" />
       <p v-if="error" class="mt-3 rounded-lg bg-status-failed/10 p-3 text-xs text-status-failed" role="alert">{{ error }}</p>
     </section>

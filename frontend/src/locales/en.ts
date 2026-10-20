@@ -1569,6 +1569,8 @@ export default {
     byAce: 'ACE-Step\'s model writes fast and in its own format, but often strays from the idea.',
     byAssistant: 'The prompt assistant writes the prompt: it keeps to the idea and writes the lyrics in the language picked.',
     byAssistantCpu: 'The assistant writes the prompt. An engine holds the GPU, so it writes on the CPU: a song\'s lyrics take about a minute.',
+    byAssistantInstrumental: 'The prompt assistant writes the prompt from your idea.',
+    byAssistantCpuInstrumental: 'The assistant writes the prompt. An engine holds the GPU, so it writes on the CPU: for an instrumental that is about 10–20 s.',
     byAssistantGpu: 'The assistant writes on the GPU: a running engine is unloaded meanwhile, and Generate removes the assistant and starts {engine}.',
     startAce: 'start ACE-Step',
     noWriter: 'Nothing can write the prompt: start ACE-Step or download the assistant\'s model.',
