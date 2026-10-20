@@ -9,6 +9,10 @@ import type { Sa3ModelId } from '../../api/stableAudio'
 import ChipGroup from '../../components/shared/ChipGroup.vue'
 import HelpIconButton from '../../components/shared/HelpIconButton.vue'
 import HelpModal from '../../components/shared/HelpModal.vue'
+import HelpBody from '../../components/shared/help/HelpBody.vue'
+import HelpSection from '../../components/shared/help/HelpSection.vue'
+import HelpList from '../../components/shared/help/HelpList.vue'
+import HelpExamples from '../../components/shared/help/HelpExamples.vue'
 import LibraryPicker from '../../components/editor/LibraryPicker.vue'
 
 const store = useStableAudioStore()
@@ -429,27 +433,23 @@ function applyExample(text: string) {
 
     <LibraryPicker v-if="pickerOpen" @pick="onPickFromLibrary" @close="pickerOpen = false" />
 
+    <!-- The help windows, in the editor guide's look -->
     <HelpModal :open="helpOpen === 'ref'" :title="t('sa3Gen.ref.help.title')" @close="helpOpen = false">
-      <p>{{ t('sa3Gen.ref.help.text') }}</p>
+      <HelpBody :lead="t('sa3Gen.ref.help.text')" />
     </HelpModal>
-    <HelpModal :open="helpOpen === 'prompt'" :title="t('sa3Gen.help.title')" @close="helpOpen = false">
-      <div class="space-y-4">
-        <p>{{ t('sa3Gen.help.intro') }}</p>
-        <section>
-          <h4 class="mb-1.5 text-sm font-semibold text-text">{{ t('sa3Gen.help.tipsTitle') }}</h4>
-          <ul class="list-disc space-y-1 pl-4">
-            <li v-for="x in (tm('sa3Gen.help.tips') as string[])" :key="x">{{ x }}</li>
-          </ul>
-        </section>
-        <section>
-          <h4 class="mb-1.5 text-sm font-semibold text-text">{{ t('sa3Gen.help.examplesTitle') }}</h4>
-          <ul class="space-y-1.5">
-            <li v-for="x in (tm('sa3Gen.help.examples') as string[])" :key="x">
-              <button type="button" class="w-full rounded-lg border border-border/60 bg-panel-2/50 px-3 py-2 text-left text-xs leading-relaxed hover:border-accent1/50" @click="applyExample(x)">{{ x }}</button>
-            </li>
-          </ul>
-        </section>
-      </div>
+    <HelpModal :open="helpOpen === 'prompt'" :title="t('sa3Gen.help.title')" wide @close="helpOpen = false">
+      <HelpBody :lead="t('sa3Gen.help.intro')">
+        <HelpSection :title="t('sa3Gen.help.tipsTitle')" tone="tips">
+          <HelpList :items="tm('sa3Gen.help.tips') as string[]" />
+        </HelpSection>
+        <HelpSection :title="t('sa3Gen.help.examplesTitle')">
+          <HelpExamples
+            :items="(tm('sa3Gen.help.examples') as string[]).map((text) => ({ text }))"
+            pickable
+            @pick="(i) => applyExample((tm('sa3Gen.help.examples') as string[])[i])"
+          />
+        </HelpSection>
+      </HelpBody>
     </HelpModal>
   </div>
 </template>

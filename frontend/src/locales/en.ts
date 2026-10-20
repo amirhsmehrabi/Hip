@@ -1,6 +1,7 @@
 export default {
   common: {
     help: 'Help',
+    helpPickExample: 'Click an example to put it into the field.',
     save: 'Save',
     undo: 'Undo',
     redo: 'Redo',
@@ -1399,7 +1400,6 @@ export default {
         'Not what you wanted? Change a word or two, or just generate again: every run uses new random seeds.',
       ],
       examplesTitle: 'Examples of parts',
-      useExample: 'Click an example to put it into the description.',
       examples: [
         { track: 'drums', text: 'tight house drums, four-on-the-floor kick, crisp offbeat hi-hats, clap on 2 and 4' },
         { track: 'bass', text: 'warm analog bass, syncopated 16th notes, low register, punchy' },

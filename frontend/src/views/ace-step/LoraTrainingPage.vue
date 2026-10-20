@@ -12,6 +12,9 @@ import ProgressBar from '../../components/shared/ProgressBar.vue'
 import CollapsibleDetails from '../../components/shared/CollapsibleDetails.vue'
 import HelpModal from '../../components/shared/HelpModal.vue'
 import HelpIconButton from '../../components/shared/HelpIconButton.vue'
+import HelpBody from '../../components/shared/help/HelpBody.vue'
+import HelpSection from '../../components/shared/help/HelpSection.vue'
+import HelpTable from '../../components/shared/help/HelpTable.vue'
 import AceStepTabs from './AceStepTabs.vue'
 import type { DatasetSample } from '../../api/aceStepTraining'
 
@@ -563,39 +566,26 @@ async function onExport() {
       </template>
     </template>
 
-    <HelpModal :open="helpOpen === 'dataset'" :title="t('lora.help.dataset.title')" @close="helpOpen = null">
-      <table class="w-full border-collapse text-xs">
-        <thead>
-          <tr class="border-b border-border text-left text-text">
-            <th class="py-1 pr-2">{{ t('lora.help.dataset.fieldHeader') }}</th>
-            <th class="py-1">{{ t('lora.help.dataset.whatHeader') }}</th>
-          </tr>
-        </thead>
-        <tbody class="align-top">
-          <tr v-for="row in (tm('lora.help.dataset.rows') as { field: string; what: string }[])" :key="row.field" class="border-b border-border/60">
-            <td class="py-1.5 pr-2 font-medium text-text">{{ row.field }}</td>
-            <td class="py-1.5">{{ row.what }}</td>
-          </tr>
-        </tbody>
-      </table>
+    <!-- The help windows, in the editor guide's look -->
+    <HelpModal :open="helpOpen === 'dataset'" :title="t('lora.help.dataset.title')" wide @close="helpOpen = null">
+      <HelpBody>
+        <HelpTable
+          :columns="[{ key: 'field', label: t('lora.help.dataset.fieldHeader'), nowrap: true }, { key: 'what', label: t('lora.help.dataset.whatHeader') }]"
+          :rows="tm('lora.help.dataset.rows') as { field: string; what: string }[]"
+        />
+      </HelpBody>
     </HelpModal>
 
-    <HelpModal :open="helpOpen === 'training'" :title="t('lora.help.training.title')" @close="helpOpen = null">
-      <table class="w-full border-collapse text-xs">
-        <thead>
-          <tr class="border-b border-border text-left text-text">
-            <th class="py-1 pr-2">{{ t('lora.help.training.paramHeader') }}</th>
-            <th class="py-1">{{ t('lora.help.training.whatHeader') }}</th>
-          </tr>
-        </thead>
-        <tbody class="align-top">
-          <tr v-for="row in (tm('lora.help.training.rows') as { param: string; what: string }[])" :key="row.param" class="border-b border-border/60">
-            <td class="py-1.5 pr-2 font-medium text-text">{{ row.param }}</td>
-            <td class="py-1.5">{{ row.what }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p class="text-xs text-text-dim">{{ t('lora.help.training.footer') }}</p>
+    <HelpModal :open="helpOpen === 'training'" :title="t('lora.help.training.title')" wide @close="helpOpen = null">
+      <HelpBody>
+        <HelpTable
+          :columns="[{ key: 'param', label: t('lora.help.training.paramHeader'), nowrap: true }, { key: 'what', label: t('lora.help.training.whatHeader') }]"
+          :rows="tm('lora.help.training.rows') as { param: string; what: string }[]"
+        />
+        <HelpSection tone="note">
+          <p>{{ t('lora.help.training.footer') }}</p>
+        </HelpSection>
+      </HelpBody>
     </HelpModal>
   </div>
 </template>

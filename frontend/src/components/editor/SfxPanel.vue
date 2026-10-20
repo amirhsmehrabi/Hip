@@ -24,6 +24,10 @@ import type { DockSide } from '../../utils/dock'
 import ChipGroup from '../shared/ChipGroup.vue'
 import HelpIconButton from '../shared/HelpIconButton.vue'
 import HelpModal from '../shared/HelpModal.vue'
+import HelpBody from '../shared/help/HelpBody.vue'
+import HelpSection from '../shared/help/HelpSection.vue'
+import HelpList from '../shared/help/HelpList.vue'
+import HelpExamples from '../shared/help/HelpExamples.vue'
 import PauseIcon from '../shared/icons/PauseIcon.vue'
 import PlayIcon from '../shared/icons/PlayIcon.vue'
 import PlusIcon from '../shared/icons/PlusIcon.vue'
@@ -528,26 +532,20 @@ function statusKey(job: SfxJob): string {
       </article>
     </div>
 
-    <HelpModal :open="helpOpen" :title="t('sfx.help.title')" @close="helpOpen = false">
-      <div class="space-y-4">
-        <p>{{ t('sfx.help.intro') }}</p>
-        <section>
-          <h4 class="mb-1.5 text-sm font-semibold text-text">{{ t('sfx.help.tipsTitle') }}</h4>
-          <ul class="list-disc space-y-1 pl-4">
-            <li v-for="x in (tm('sfx.help.tips') as string[])" :key="x">{{ x }}</li>
-          </ul>
-        </section>
-        <section>
-          <h4 class="mb-1.5 text-sm font-semibold text-text">{{ t('sfx.help.examplesTitle') }}</h4>
-          <ul class="space-y-1.5">
-            <li v-for="ex in (tm('sfx.help.examples') as { kind: SfxKind; text: string }[])" :key="ex.text">
-              <button type="button" class="w-full rounded-lg border border-border/60 bg-panel-2/50 px-3 py-2 text-left text-xs leading-relaxed hover:border-accent1/50" @click="applyExample(ex)">
-                <span class="mr-1.5 rounded border border-border px-1 text-[10px] text-text-dim">{{ t(`sfx.kinds.${ex.kind}`) }}</span>{{ ex.text }}
-              </button>
-            </li>
-          </ul>
-        </section>
-      </div>
+    <!-- The help window, in the editor guide's look -->
+    <HelpModal :open="helpOpen" :title="t('sfx.help.title')" wide @close="helpOpen = false">
+      <HelpBody :lead="t('sfx.help.intro')">
+        <HelpSection :title="t('sfx.help.tipsTitle')" tone="tips">
+          <HelpList :items="tm('sfx.help.tips') as string[]" />
+        </HelpSection>
+        <HelpSection :title="t('sfx.help.examplesTitle')">
+          <HelpExamples
+            :items="(tm('sfx.help.examples') as { kind: SfxKind; text: string }[]).map((x) => ({ label: t(`sfx.kinds.${x.kind}`), text: x.text }))"
+            pickable
+            @pick="(i) => applyExample((tm('sfx.help.examples') as { kind: SfxKind; text: string }[])[i])"
+          />
+        </HelpSection>
+      </HelpBody>
     </HelpModal>
   </section>
 </template>
