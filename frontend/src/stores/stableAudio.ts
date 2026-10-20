@@ -74,6 +74,8 @@ export interface Sa3GenerateParams {
   /** What the user typed, before the service tags were added. */
   caption?: string
   autoTags?: boolean
+  /** The card's and the track's name; the prompt when not given ("From an idea" passes the idea). */
+  title?: string
 }
 
 export const useStableAudioStore = defineStore('stableAudio', {
@@ -188,7 +190,7 @@ export const useStableAudioStore = defineStore('stableAudio', {
         ids.push(id)
         const text = prompts ? prompts[i] : p.prompt
         this.jobs.unshift({
-          id, status: 'queued', createdAt: created, title: text, prompt: text, kind: p.kind, model: p.model,
+          id, status: 'queued', createdAt: created, title: p.title || text, prompt: text, kind: p.kind, model: p.model,
           seed: p.seed >= 0 ? p.seed : null, durationSec: null, wallSec: null, progress: 0, finalized: false, params, index: i,
         })
       }

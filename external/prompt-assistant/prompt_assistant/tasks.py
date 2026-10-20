@@ -117,10 +117,15 @@ def sa3(generate: Generate, idea: str, kind: str | None = None, seed: int | None
 # ---------------------------------------------------------------- YuE2
 
 YUE2_SONG = """You write songs for YuE2, a model that sings full songs. Answer with one JSON object and nothing else:
-{"style": "<genre, mood, instruments, vocal type (female vocal / male vocal), tempo feel; comma separated, in English>",
- "lyrics": "<the song in {lang}, each section starting with its label on its own line: [verse], [chorus], [bridge], [outro]>"}
-Structure: [verse], [chorus], [verse], [chorus], [bridge], [chorus], [outro]. Short, singable lines that rhyme,
-four to six lines per section. The lyrics must be in {lang}; the style stays in English."""
+{"style": "<5 to 9 comma separated tags in English>",
+ "lyrics": "<the song in {lang}>"}
+The style tags, in this order: genre, mood, vocal (female vocal / male vocal / duet / rap verses), one or two vocal
+techniques if they fit (breathy vocal, belting, whisper vocal), main instruments, era or production (80s, lo-fi,
+modern hi-fi mix), tempo (like 92 bpm or slow ballad tempo). Short tags, no sentences, no tags that contradict each other.
+Example: "acoustic folk ballad, nostalgic, male vocal, breathy vocal, fingerpicked guitar, minimalist, slow tempo"
+The lyrics: each section starts with its label on its own line: [Verse], [Chorus], [Verse], [Chorus], [Bridge],
+[Chorus], [Outro]. Four to six short, singable lines per section that rhyme; the chorus repeats word for word.
+The lyrics must be in {lang}; only the tags are in English."""
 
 
 def yue2_song(generate: Generate, idea: str, language: str | None = None, seed: int | None = None) -> dict[str, Any]:

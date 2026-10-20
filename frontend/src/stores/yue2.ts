@@ -103,7 +103,8 @@ export const useYue2Store = defineStore('yue2', {
       if (this._healthTimer) clearTimeout(this._healthTimer)
       this._healthTimer = null
     },
-    async generateBatch(params: { lyrics: string; style: string; cot: CotMode; precision: 'q8_0' | 'q4_0'; baseSeed: number; randomSeed: boolean; batchSize: number; options: GenerateOptions }) {
+    /** `title` names the cards and tracks (the style when not given; "From an idea" passes the idea). */
+    async generateBatch(params: { lyrics: string; style: string; cot: CotMode; precision: 'q8_0' | 'q4_0'; baseSeed: number; randomSeed: boolean; batchSize: number; options: GenerateOptions; title?: string }) {
       const newJobs: Yue2Job[] = []
       for (let i = 0; i < params.batchSize; i++) {
         const seed = params.randomSeed ? Math.floor(Math.random() * 2147483647) : params.baseSeed + i
@@ -111,7 +112,7 @@ export const useYue2Store = defineStore('yue2', {
           id: `g_${Date.now()}_${i}`,
           status: 'queued',
           createdAt: Date.now(),
-          title: params.style,
+          title: params.title || params.style,
           style: params.style,
           lyrics: params.lyrics,
           cot: params.cot,
