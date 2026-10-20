@@ -17,11 +17,13 @@ import TargetIcon from './icons/TargetIcon.vue'
 import TimelineIcon from './icons/TimelineIcon.vue'
 import WaveIcon from './icons/WaveIcon.vue'
 import PulseIcon from './icons/PulseIcon.vue'
+import SparklesIcon from './icons/SparklesIcon.vue'
 
 const orchestrator = useOrchestratorStore()
 const features = useFeaturesStore()
 const route = useRoute()
 const onEditor = computed(() => route.path.startsWith('/editor'))
+const onIdea = computed(() => route.name === 'idea')
 const { selectModel } = useModelSwitch()
 const { t, locale } = useI18n()
 const helpOpen = ref(false)
@@ -131,7 +133,7 @@ async function onSelect(id: ModelId) {
     <!-- One row over the whole window: the brand, the sections centred on the window, the tools. As the window
          narrows, things drop out in order (the tagline, the memory numbers, the brand name, the descriptions) rather
          than wrapping; on a phone the tabs scroll sideways. -->
-    <div class="flex h-[4.75rem] items-stretch gap-4 px-4 sm:px-6 lg:grid lg:grid-cols-[1fr_auto_1fr] lg:gap-6 2xl:gap-8">
+    <div class="flex h-[4.75rem] items-stretch gap-4 px-4 sm:px-6 lg:grid lg:grid-cols-[1fr_auto_1fr] lg:gap-6">
       <!-- the mark is as tall as the two lines next to it (24 + 16 px); the R is drawn, not set in a
            font - an SVG <text> falls back to a different face and looks uneven -->
       <router-link to="/" class="flex shrink-0 items-center gap-2.5 self-center justify-self-start text-text">
@@ -157,9 +159,25 @@ async function onSelect(id: ModelId) {
         :aria-label="t('header.navLabel')"
         @scroll.passive="updateNavMore"
       >
+        <!-- the simplest way in comes first: an idea in words, the prompt is written for whichever engine -->
+        <router-link
+          to="/idea"
+          class="relative flex shrink-0 items-center gap-2.5 px-3 transition-colors"
+          :class="onIdea ? 'text-text' : 'text-text-dim hover:text-text'"
+          :title="t('header.desc.idea')"
+          :aria-current="onIdea ? 'page' : undefined"
+        >
+          <SparklesIcon class="h-[18px] w-[18px] shrink-0" :class="onIdea && 'text-accent1'" />
+          <!-- no second line: the tabs already crowd the header, what it does is in the tooltip -->
+          <span class="text-[15px] leading-5 whitespace-nowrap" :class="onIdea ? 'font-semibold' : 'font-medium'">{{ t('header.idea') }}</span>
+          <span v-if="onIdea" class="accent-gradient absolute inset-x-3 bottom-0 h-0.5 rounded-full" aria-hidden="true"></span>
+        </router-link>
+
+        <span class="mx-2 h-8 w-px shrink-0 self-center bg-border" aria-hidden="true"></span>
+
         <button
           type="button"
-          class="relative flex shrink-0 items-center gap-2.5 px-3.5 text-left transition-colors"
+          class="relative flex shrink-0 items-center gap-2.5 px-3 text-left transition-colors"
           :class="route.name === MODEL_ROUTES.ace_step ? 'text-text' : 'text-text-dim hover:text-text'"
           :title="engineTitle('ace_step')"
           :aria-current="route.name === MODEL_ROUTES.ace_step ? 'page' : undefined"
@@ -178,7 +196,7 @@ async function onSelect(id: ModelId) {
         </button>
         <router-link
           to="/ace-step/lora"
-          class="relative flex shrink-0 items-center gap-2 pr-3.5 pl-1.5 transition-colors"
+          class="relative flex shrink-0 items-center gap-2 pr-3 pl-1.5 transition-colors"
           :class="route.name === 'ace-step-lora' ? 'text-text' : 'text-text-dim hover:text-text'"
           :title="t('header.loraTitle')"
           :aria-current="route.name === 'ace-step-lora' ? 'page' : undefined"
@@ -196,7 +214,7 @@ async function onSelect(id: ModelId) {
         <template v-for="engine in OTHER_ENGINES" :key="engine.id">
           <button
             type="button"
-            class="relative flex shrink-0 items-center gap-2.5 px-3.5 text-left transition-colors"
+            class="relative flex shrink-0 items-center gap-2.5 px-3 text-left transition-colors"
             :class="route.name === MODEL_ROUTES[engine.id] ? 'text-text' : 'text-text-dim hover:text-text'"
             :title="engineTitle(engine.id)"
             :aria-current="route.name === MODEL_ROUTES[engine.id] ? 'page' : undefined"
@@ -223,7 +241,7 @@ async function onSelect(id: ModelId) {
 
         <router-link
           to="/editor"
-          class="relative flex shrink-0 items-center gap-2.5 px-3.5 transition-colors"
+          class="relative flex shrink-0 items-center gap-2.5 px-3 transition-colors"
           :class="onEditor ? 'text-text' : 'text-text-dim hover:text-text'"
           :title="t('header.desc.editor')"
           :aria-current="onEditor ? 'page' : undefined"
