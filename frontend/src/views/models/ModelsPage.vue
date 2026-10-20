@@ -5,6 +5,7 @@
 // The chosen engine is the URL hash (#ace-step, #yue2, #stable-audio, #samples-cpu, #demucs), so the panels can
 // link straight to a section.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import type { Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import type { CpuSamplerSettings, EngineId, EnginePart } from '../../api/engines'
@@ -17,6 +18,11 @@ import { gb } from '../../utils/bytes'
 import HfTokenField from '../../components/shared/HfTokenField.vue'
 import NotInstalled from '../../components/shared/NotInstalled.vue'
 import PartRow from '../../components/shared/PartRow.vue'
+import MicIcon from '../../components/shared/icons/MicIcon.vue'
+import PulseIcon from '../../components/shared/icons/PulseIcon.vue'
+import SampleIcon from '../../components/shared/icons/SampleIcon.vue'
+import SplitStemsIcon from '../../components/shared/icons/SplitStemsIcon.vue'
+import WaveIcon from '../../components/shared/icons/WaveIcon.vue'
 
 const { t, locale } = useI18n()
 const store = useEnginesStore()
@@ -26,12 +32,13 @@ const route = useRoute()
 const router = useRouter()
 
 type SectionId = 'ace-step' | 'yue2' | 'stable-audio' | 'samples-cpu' | 'demucs'
-const SECTIONS: { id: SectionId; engine: EngineId; sub?: boolean }[] = [
-  { id: 'ace-step', engine: 'ace_step' },
-  { id: 'yue2', engine: 'yue2' },
-  { id: 'stable-audio', engine: 'stable_audio' },
-  { id: 'samples-cpu', engine: 'stable_audio', sub: true },
-  { id: 'demucs', engine: 'demucs' },
+/** The same icons as the header's engine tabs, so the list reads as the same things. Colours: the disk bar. */
+const SECTIONS: { id: SectionId; engine: EngineId; icon: Component; bar: string; sub?: boolean }[] = [
+  { id: 'ace-step', engine: 'ace_step', icon: WaveIcon, bar: 'bg-accent1' },
+  { id: 'yue2', engine: 'yue2', icon: MicIcon, bar: 'bg-accent2' },
+  { id: 'stable-audio', engine: 'stable_audio', icon: PulseIcon, bar: 'bg-accent' },
+  { id: 'samples-cpu', engine: 'stable_audio', icon: SampleIcon, bar: '', sub: true },
+  { id: 'demucs', engine: 'demucs', icon: SplitStemsIcon, bar: 'bg-text-dim' },
 ]
 const isSection = (s: string): s is SectionId => SECTIONS.some((x) => x.id === s)
 const current = ref<SectionId>(isSection(route.hash.slice(1)) ? (route.hash.slice(1) as SectionId) : 'ace-step')
@@ -44,9 +51,21 @@ const section = computed(() => SECTIONS.find((s) => s.id === current.value)!)
 const engineId = computed(() => section.value.engine)
 const engines = computed(() => store.state?.engines ?? null)
 const engine = computed(() => engines.value?.[engineId.value] ?? null)
-const sectionTitle = computed(() => current.value === 'samples-cpu' ? t('models.cpu.title') : current.value === 'demucs' ? t('models.demucs.title') : MODEL_LABELS[engineId.value as 'ace_step' | 'yue2' | 'stable_audio'])
+function titleOf(id: SectionId): string {
+  if (id === 'samples-cpu') return t('models.cpu.title')
+  if (id === 'demucs') return t('models.demucs.title')
+  return MODEL_LABELS[SECTIONS.find((s) => s.id === id)!.engine as 'ace_step' | 'yue2' | 'stable_audio']
+}
+const sectionTitle = computed(() => titleOf(current.value))
 
+// ---- disk ----
 const totalBytes = computed(() => Object.values(engines.value ?? {}).reduce((a, e) => a + (e.on_disk ?? 0), 0))
+/** Shares of the disk bar, one per engine; the smallest still shows as a sliver. */
+const diskShares = computed(() => SECTIONS.filter((s) => !s.sub).map((s) => {
+  const bytes = engines.value?.[s.engine]?.on_disk ?? 0
+  return { id: s.id, bar: s.bar, bytes, percent: totalBytes.value ? Math.max(bytes ? 0.6 : 0, (bytes / totalBytes.value) * 100) : 0 }
+}))
+
 const actionError = ref<string | null>(null)
 async function run(action: () => Promise<unknown>) {
   actionError.value = null
@@ -59,7 +78,8 @@ async function run(action: () => Promise<unknown>) {
 
 // ---- the engine's process ----
 const status = computed(() => engine.value?.status ?? null)
-const STATUS_DOT: Record<string, string> = { running: 'bg-status-done', starting: 'bg-status-queued', stopping: 'bg-status-queued', error: 'bg-status-failed', stopped: 'bg-gray-500' }
+const STATUS_DOT: Record<string, string> = { running: 'bg-status-done', starting: 'bg-status-queued', stopping: 'bg-status-queued', error: 'bg-status-failed', stopped: 'bg-text-dim/50' }
+const STATUS_PILL: Record<string, string> = { running: 'bg-status-done/15 text-status-done', starting: 'bg-status-queued/15 text-status-queued', stopping: 'bg-status-queued/15 text-status-queued', error: 'bg-status-failed/15 text-status-failed', stopped: 'bg-panel-2 text-text-dim' }
 function dotFor(id: EngineId): string {
   if (id === 'demucs') return ''
   return STATUS_DOT[engines.value?.[id]?.status ?? 'stopped']
@@ -136,76 +156,97 @@ onBeforeUnmount(() => store.unwatch())
 
 <template>
   <div class="mx-auto max-w-5xl">
-    <header class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-      <h1 class="text-2xl font-semibold text-text">{{ t('models.title') }}</h1>
-      <p v-if="engines" class="text-sm text-text-dim">{{ t('models.total', { gb: gb(totalBytes, locale) }) }}</p>
+    <!-- title, and the disk: the total with a bar of each engine's share -->
+    <header class="flex flex-wrap items-end justify-between gap-x-8 gap-y-3">
+      <div class="min-w-0">
+        <h1 class="text-2xl font-semibold text-text">{{ t('models.title') }}</h1>
+        <p class="mt-1 max-w-2xl text-sm leading-relaxed text-text-dim">{{ t('models.lead') }}</p>
+      </div>
+      <div v-if="engines" class="w-full max-w-xs shrink-0 sm:w-72">
+        <p class="flex items-baseline justify-between text-xs text-text-dim">
+          <span>{{ t('models.diskTitle') }}</span>
+          <span class="text-sm font-semibold tabular-nums text-text">{{ t('models.size', { gb: gb(totalBytes, locale) }) }}</span>
+        </p>
+        <div class="mt-1.5 flex h-2 w-full gap-px overflow-hidden rounded-full bg-panel-2" role="img" :aria-label="t('models.total', { gb: gb(totalBytes, locale) })">
+          <span v-for="s in diskShares" :key="s.id" class="h-full" :class="s.bar" :style="{ width: `${s.percent}%` }"></span>
+        </div>
+      </div>
     </header>
-    <p class="mt-1 max-w-3xl text-sm leading-relaxed text-text-dim">{{ t('models.lead') }}</p>
 
-    <p v-if="store.loadError" class="mt-4 rounded-lg bg-status-failed/10 p-3 text-sm text-status-failed">{{ store.loadError }}</p>
-    <p v-else-if="!engines" class="mt-4 text-sm text-text-dim">{{ t('models.loading') }}</p>
+    <p v-if="store.loadError" class="mt-5 rounded-lg bg-status-failed/10 p-3 text-sm text-status-failed">{{ store.loadError }}</p>
+    <p v-else-if="!engines" class="mt-5 text-sm text-text-dim">{{ t('models.loading') }}</p>
 
-    <div v-if="engines" class="mt-5 grid gap-6 lg:grid-cols-[13rem_minmax(0,1fr)]">
+    <div v-if="engines" class="mt-5 grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
       <!-- the engines: a column on a wide screen, a row of chips on a narrow one -->
-      <nav :aria-label="t('models.nav')" class="-mx-4 flex gap-1 overflow-x-auto px-4 lg:sticky lg:top-20 lg:mx-0 lg:flex-col lg:self-start lg:overflow-visible lg:px-0">
+      <nav :aria-label="t('models.nav')" class="-mx-4 flex gap-1 overflow-x-auto px-4 lg:sticky lg:top-20 lg:mx-0 lg:flex-col lg:self-start lg:overflow-visible lg:rounded-xl lg:border lg:border-border lg:bg-panel lg:p-1.5">
         <button
           v-for="s in SECTIONS"
           :key="s.id"
           type="button"
-          class="flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors lg:w-full"
-          :class="[current === s.id ? 'bg-panel text-text ring-1 ring-border' : 'text-text-dim hover:bg-panel/60 hover:text-text', s.sub && 'lg:pl-8']"
+          class="relative flex shrink-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors lg:w-full"
+          :class="[
+            current === s.id ? 'bg-accent1/15 text-text' : 'text-text-dim hover:bg-panel-2 hover:text-text',
+            s.sub && 'lg:ml-3 lg:w-[calc(100%-0.75rem)]',
+          ]"
           :aria-current="current === s.id ? 'page' : undefined"
           @click="select(s.id)"
         >
-          <span v-if="!s.sub && dotFor(s.engine)" class="h-2 w-2 shrink-0 rounded-full" :class="dotFor(s.engine)"></span>
-          <span class="min-w-0 flex-1 truncate">{{ s.id === 'samples-cpu' ? t('models.cpu.navTitle') : s.id === 'demucs' ? t('models.demucs.navTitle') : MODEL_LABELS[s.engine as 'ace_step' | 'yue2' | 'stable_audio'] }}</span>
-          <span v-if="!s.sub && engines[s.engine].on_disk != null" class="hidden text-xs tabular-nums text-text-dim lg:inline">{{ t('models.size', { gb: gb(engines[s.engine].on_disk ?? 0, locale) }) }}</span>
+          <span v-if="current === s.id" class="accent-gradient absolute inset-y-2 left-0 w-0.5 rounded-full" aria-hidden="true"></span>
+          <component :is="s.icon" class="h-4 w-4 shrink-0" :class="current === s.id ? 'text-accent1' : 'text-text-dim'" />
+          <span class="min-w-0 flex-1 truncate" :class="current === s.id && 'font-medium'">{{ s.id === 'samples-cpu' ? t('models.cpu.navTitle') : s.id === 'demucs' ? t('models.demucs.navTitle') : MODEL_LABELS[s.engine as 'ace_step' | 'yue2' | 'stable_audio'] }}</span>
+          <span v-if="!s.sub && dotFor(s.engine)" class="h-1.5 w-1.5 shrink-0 rounded-full" :class="dotFor(s.engine)" :title="t(`models.status.${engines[s.engine].status ?? 'stopped'}`)"></span>
+          <span v-if="!s.sub && engines[s.engine].on_disk" class="hidden text-[11px] tabular-nums text-text-dim lg:inline">{{ t('models.size', { gb: gb(engines[s.engine].on_disk ?? 0, locale) }) }}</span>
         </button>
       </nav>
 
-      <section :id="current" class="min-w-0">
-        <!-- header: the name, the state, start / stop -->
-        <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <h2 class="text-lg font-semibold text-text">{{ sectionTitle }}</h2>
-          <span v-if="status && !section.sub" class="inline-flex items-center gap-1.5 text-xs text-text-dim">
-            <span class="h-2 w-2 rounded-full" :class="STATUS_DOT[status]"></span>{{ t(`models.status.${status}`) }}
+      <!-- the chosen engine: one card with a header strip and sections inside -->
+      <section class="min-w-0 overflow-hidden rounded-xl border border-border bg-panel">
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-panel-2/60 px-4 py-3">
+          <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent1/15 text-accent1">
+            <component :is="section.icon" class="h-[18px] w-[18px]" />
+          </span>
+          <div class="min-w-0 flex-1">
+            <h2 class="truncate text-base font-semibold text-text">{{ sectionTitle }}</h2>
+            <p v-if="!section.sub && engine?.on_disk != null" class="text-xs text-text-dim">{{ t('models.onDisk', { gb: gb(engine.on_disk ?? 0, locale) }) }}</p>
+          </div>
+          <span v-if="status && !section.sub" class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs" :class="STATUS_PILL[status]">
+            <span class="h-1.5 w-1.5 rounded-full" :class="STATUS_DOT[status]"></span>{{ t(`models.status.${status}`) }}
           </span>
           <template v-if="status && !section.sub && engine?.ready">
-            <button v-if="status === 'running'" type="button" class="ml-auto rounded-lg border border-border px-3 py-1.5 text-xs text-text-dim hover:text-text" :disabled="orchestrator.switching" @click="stopEngine">{{ t('models.stop') }}</button>
-            <button v-else-if="status === 'stopped' || status === 'error'" type="button" class="ml-auto rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-accent1 disabled:opacity-50" :disabled="orchestrator.switching" @click="startEngine">{{ t('models.start') }}</button>
+            <button v-if="status === 'running'" type="button" class="rounded-lg border border-border px-3 py-1.5 text-xs text-text-dim hover:border-text-dim hover:text-text" :disabled="orchestrator.switching" @click="stopEngine">{{ t('models.stop') }}</button>
+            <button v-else-if="status === 'stopped' || status === 'error'" type="button" class="accent-gradient rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50" :disabled="orchestrator.switching" @click="startEngine">{{ t('models.start') }}</button>
           </template>
         </div>
-        <p v-if="status === 'error' && engine && orchestrator.statuses[engineId]?.error" class="mt-2 whitespace-pre-line rounded-lg bg-status-failed/10 p-3 text-xs text-status-failed">{{ orchestrator.statuses[engineId]?.error }}</p>
-        <p v-if="actionError" class="mt-3 rounded-lg bg-status-failed/10 p-3 text-xs text-status-failed" role="alert">{{ actionError }}</p>
 
-        <NotInstalled v-if="engine && !engine.ready" :feature="engineId === 'ace_step' ? 'aceBase' : engineId === 'yue2' ? 'yue2' : engineId === 'demucs' ? 'demucs' : 'stableAudio'" compact class="mt-4" />
+        <div class="px-4 pb-4">
+          <p v-if="status === 'error' && engine && orchestrator.statuses[engineId]?.error" class="mt-4 whitespace-pre-line rounded-lg bg-status-failed/10 p-3 text-xs text-status-failed">{{ orchestrator.statuses[engineId]?.error }}</p>
+          <p v-if="actionError" class="mt-4 rounded-lg bg-status-failed/10 p-3 text-xs text-status-failed" role="alert">{{ actionError }}</p>
 
-        <!-- ================= ACE-Step / YuE2 ================= -->
-        <template v-else-if="engine && (engineId === 'ace_step' || engineId === 'yue2') && !section.sub">
-          <div class="mt-4 rounded-xl border border-border bg-panel p-4">
-            <h3 class="text-sm font-semibold text-text">{{ t('models.settings') }}</h3>
-            <p v-if="engineId === 'yue2'" class="mt-1 text-xs leading-relaxed text-text-dim">{{ t('models.yue2.noSettings') }}</p>
-            <div v-else class="mt-3 grid gap-4 sm:grid-cols-2">
+          <NotInstalled v-if="engine && !engine.ready" :feature="engineId === 'ace_step' ? 'aceBase' : engineId === 'yue2' ? 'yue2' : engineId === 'demucs' ? 'demucs' : 'stableAudio'" compact class="mt-4" />
+
+          <!-- ================= ACE-Step / YuE2 ================= -->
+          <template v-else-if="engine && (engineId === 'ace_step' || engineId === 'yue2') && !section.sub">
+            <h3 class="mt-4 text-[11px] font-semibold tracking-wider text-text-dim uppercase">{{ t('models.settings') }}</h3>
+            <p v-if="engineId === 'yue2'" class="mt-2 text-xs leading-relaxed text-text-dim">{{ t('models.yue2.noSettings') }}</p>
+            <div v-else class="mt-2 grid gap-4 sm:grid-cols-2">
               <label v-for="key in ['dit_model', 'lm_model']" :key="key" class="flex flex-col gap-1 text-xs">
                 <span class="font-medium text-text">{{ t(`models.ace.${key}`) }}</span>
-                <select class="rounded-lg border border-border bg-panel-2 px-2 py-1.5 text-sm text-text" :value="engine.settings?.[key]" @change="setSetting(key, ($event.target as HTMLSelectElement).value)">
+                <select class="rounded-lg border border-border bg-panel-2 px-2.5 py-2 text-sm text-text focus:border-accent1 focus:outline-none" :value="engine.settings?.[key]" @change="setSetting(key, ($event.target as HTMLSelectElement).value)">
                   <option v-for="v in engine.choices?.[key] ?? []" :key="v" :value="v">{{ v }}</option>
                 </select>
                 <span class="leading-relaxed text-text-dim">{{ t(`models.ace.${key}Hint`) }}</span>
               </label>
             </div>
-            <p v-if="pendingRestart" class="mt-3 flex flex-wrap items-center gap-3 text-xs text-status-queued">
+            <p v-if="pendingRestart" class="mt-3 flex flex-wrap items-center gap-3 rounded-lg bg-status-queued/10 px-3 py-2 text-xs text-status-queued">
               {{ t('models.restartNote', { engine: sectionTitle }) }}
-              <button type="button" class="rounded-lg border border-border px-2.5 py-1 text-text hover:border-accent1" @click="restart">{{ t('models.restart') }}</button>
+              <button type="button" class="rounded-lg border border-status-queued/40 px-2.5 py-1 text-status-queued hover:bg-status-queued/10" @click="restart">{{ t('models.restart') }}</button>
             </p>
-          </div>
 
-          <div class="mt-4 rounded-xl border border-border bg-panel p-4">
-            <div class="flex items-baseline justify-between gap-3">
-              <h3 class="text-sm font-semibold text-text">{{ t('models.weights') }}</h3>
-              <span class="text-xs text-text-dim">{{ t('models.onDisk', { gb: gb(engine.on_disk ?? 0, locale) }) }}</span>
+            <div class="mt-5 flex items-baseline justify-between gap-3 border-t border-border pt-4">
+              <h3 class="text-[11px] font-semibold tracking-wider text-text-dim uppercase">{{ t('models.weights') }}</h3>
+              <span v-if="store.state?.downloading" class="text-xs text-status-queued">{{ t('models.downloadingNow') }}</span>
             </div>
-            <ul class="mt-1 divide-y divide-border">
+            <ul class="mt-1">
               <PartRow
                 v-for="p in visibleParts"
                 :key="p.id"
@@ -226,40 +267,36 @@ onBeforeUnmount(() => store.unwatch())
                 <template v-if="p.required" #note>{{ t('models.required') }}</template>
               </PartRow>
             </ul>
-            <button v-if="hiddenCount" type="button" class="mt-2 text-xs text-text-dim hover:text-text" :aria-expanded="showAll" @click="showAll = !showAll">
+            <button v-if="hiddenCount" type="button" class="mt-2 rounded-lg px-2 py-1 text-xs text-text-dim hover:bg-panel-2 hover:text-text" :aria-expanded="showAll" @click="showAll = !showAll">
               {{ t(showAll ? 'models.showLess' : 'models.showMore', { n: hiddenCount }) }}
             </button>
-          </div>
-        </template>
+          </template>
 
-        <!-- ================= Stable Audio 3 ================= -->
-        <template v-else-if="engine && engineId === 'stable_audio' && !section.sub">
-          <div class="mt-4 rounded-xl border border-border bg-panel p-4">
-            <h3 class="text-sm font-semibold text-text">{{ t('models.settings') }}</h3>
-            <div class="mt-3 grid gap-4 sm:grid-cols-2">
+          <!-- ================= Stable Audio 3 ================= -->
+          <template v-else-if="engine && engineId === 'stable_audio' && !section.sub">
+            <h3 class="mt-4 text-[11px] font-semibold tracking-wider text-text-dim uppercase">{{ t('models.settings') }}</h3>
+            <div class="mt-2 grid gap-4 sm:grid-cols-2">
               <label class="flex flex-col gap-1 text-xs">
                 <span class="font-medium text-text">{{ t('models.sa3.preload') }}</span>
-                <select class="rounded-lg border border-border bg-panel-2 px-2 py-1.5 text-sm text-text" :value="engine.settings?.preload" @change="setSetting('preload', ($event.target as HTMLSelectElement).value)">
+                <select class="rounded-lg border border-border bg-panel-2 px-2.5 py-2 text-sm text-text focus:border-accent1 focus:outline-none" :value="engine.settings?.preload" @change="setSetting('preload', ($event.target as HTMLSelectElement).value)">
                   <option v-for="v in engine.choices?.preload ?? []" :key="v" :value="v">{{ optionLabel('preload', v) }}</option>
                 </select>
                 <span class="leading-relaxed text-text-dim">{{ t('models.sa3.preloadHint') }}</span>
               </label>
-              <HfTokenField class="rounded-lg border border-border bg-panel-2 p-3" />
+              <HfTokenField class="self-start rounded-lg border border-border bg-panel-2/60 p-3" />
             </div>
-            <p v-if="pendingRestart" class="mt-3 flex flex-wrap items-center gap-3 text-xs text-status-queued">
+            <p v-if="pendingRestart" class="mt-3 flex flex-wrap items-center gap-3 rounded-lg bg-status-queued/10 px-3 py-2 text-xs text-status-queued">
               {{ t('models.restartNote', { engine: sectionTitle }) }}
-              <button type="button" class="rounded-lg border border-border px-2.5 py-1 text-text hover:border-accent1" @click="restart">{{ t('models.restart') }}</button>
+              <button type="button" class="rounded-lg border border-status-queued/40 px-2.5 py-1 text-status-queued hover:bg-status-queued/10" @click="restart">{{ t('models.restart') }}</button>
             </p>
-          </div>
 
-          <div class="mt-4 rounded-xl border border-border bg-panel p-4">
-            <div class="flex items-baseline justify-between gap-3">
-              <h3 class="text-sm font-semibold text-text">{{ t('models.weights') }}</h3>
-              <span class="text-xs text-text-dim">{{ t('models.onDisk', { gb: gb(engine.on_disk ?? 0, locale) }) }}</span>
+            <div class="mt-5 flex items-baseline justify-between gap-3 border-t border-border pt-4">
+              <h3 class="text-[11px] font-semibold tracking-wider text-text-dim uppercase">{{ t('models.weights') }}</h3>
+              <span v-if="sa3.running" class="text-xs text-status-queued">{{ t('models.downloadingNow') }}</span>
             </div>
-            <p class="mt-1 text-xs leading-relaxed text-text-dim">{{ t('sa3Weights.lead') }}</p>
+            <p class="mt-2 text-xs leading-relaxed text-text-dim">{{ t('sa3Weights.lead') }}</p>
             <p v-if="sa3.loadError" class="mt-2 text-xs text-status-failed">{{ sa3.loadError }}</p>
-            <ul class="mt-1 divide-y divide-border">
+            <ul class="mt-1">
               <PartRow
                 v-for="m in sa3Visible"
                 :key="m.id"
@@ -291,20 +328,18 @@ onBeforeUnmount(() => store.unwatch())
                 </template>
               </PartRow>
             </ul>
-            <button v-if="sa3Hidden" type="button" class="mt-2 text-xs text-text-dim hover:text-text" :aria-expanded="showAll" @click="showAll = !showAll">
+            <button v-if="sa3Hidden" type="button" class="mt-2 rounded-lg px-2 py-1 text-xs text-text-dim hover:bg-panel-2 hover:text-text" :aria-expanded="showAll" @click="showAll = !showAll">
               {{ t(showAll ? 'models.showLess' : 'models.showMoreBase', { n: sa3Hidden }) }}
             </button>
-          </div>
-        </template>
+          </template>
 
-        <!-- ================= samples on the CPU ================= -->
-        <template v-else-if="engine && section.sub">
-          <p class="mt-2 max-w-3xl text-sm leading-relaxed text-text-dim">{{ t('models.cpu.lead') }}</p>
-          <div class="mt-4 rounded-xl border border-border bg-panel p-4">
-            <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <h3 class="text-sm font-semibold text-text">{{ t('models.settings') }}</h3>
-              <span v-if="store.cpu" class="inline-flex items-center gap-1.5 text-xs text-text-dim">
-                <span class="h-2 w-2 rounded-full" :class="STATUS_DOT[store.cpu.status]"></span>{{ t(`models.status.${store.cpu.status}`) }}
+          <!-- ================= samples on the CPU ================= -->
+          <template v-else-if="engine && section.sub">
+            <p class="mt-4 max-w-3xl text-sm leading-relaxed text-text-dim">{{ t('models.cpu.lead') }}</p>
+            <div class="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+              <h3 class="text-[11px] font-semibold tracking-wider text-text-dim uppercase">{{ t('models.settings') }}</h3>
+              <span v-if="store.cpu" class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs" :class="STATUS_PILL[store.cpu.status]">
+                <span class="h-1.5 w-1.5 rounded-full" :class="STATUS_DOT[store.cpu.status]"></span>{{ t(`models.status.${store.cpu.status}`) }}
               </span>
               <template v-if="store.cpu && cpuForm?.enabled">
                 <button v-if="store.cpu.status !== 'running'" type="button" class="ml-auto rounded-lg border border-border px-3 py-1.5 text-xs text-text hover:border-accent1 disabled:opacity-50" :disabled="store.cpu.status === 'starting'" @click="run(() => store.startCpu())">{{ t('models.cpu.start') }}</button>
@@ -313,11 +348,11 @@ onBeforeUnmount(() => store.unwatch())
             </div>
             <p v-if="store.cpu && !store.cpu.available" class="mt-2 text-xs text-status-queued">{{ t('models.cpu.notAvailable') }}</p>
             <form v-else-if="cpuForm" class="mt-3 space-y-4" @change="saveCpu" @submit.prevent>
-              <label class="flex items-center gap-2 text-sm text-text">
+              <label class="flex items-center gap-2 rounded-lg border border-border bg-panel-2/60 px-3 py-2.5 text-sm text-text">
                 <input v-model="cpuForm.enabled" type="checkbox" class="h-4 w-4 accent-accent1" />
                 {{ t('models.cpu.enabled') }}
               </label>
-              <fieldset class="grid gap-4 sm:grid-cols-2" :disabled="!cpuForm.enabled">
+              <fieldset class="grid gap-4 sm:grid-cols-2 disabled:opacity-50" :disabled="!cpuForm.enabled">
                 <div class="flex flex-col gap-1.5 text-xs sm:col-span-2">
                   <span class="font-medium text-text">{{ t('models.cpu.route') }}</span>
                   <label class="flex items-start gap-2 text-text"><input v-model="cpuForm.route" type="radio" value="auto" class="mt-0.5 accent-accent1" />{{ t('models.cpu.routeAuto') }}</label>
@@ -325,47 +360,47 @@ onBeforeUnmount(() => store.unwatch())
                 </div>
                 <label class="flex flex-col gap-1 text-xs">
                   <span class="font-medium text-text">{{ t('models.cpu.threads') }}</span>
-                  <select v-model.number="cpuForm.threads" class="rounded-lg border border-border bg-panel-2 px-2 py-1.5 text-sm text-text">
+                  <select v-model.number="cpuForm.threads" class="rounded-lg border border-border bg-panel-2 px-2.5 py-2 text-sm text-text focus:border-accent1 focus:outline-none">
                     <option v-for="n in threadChoices" :key="n" :value="n">{{ n === 0 ? t('models.cpu.threadsAuto') : n }}</option>
                   </select>
                   <span class="leading-relaxed text-text-dim">{{ t('models.cpu.threadsHint', { n: store.cpu?.cpu_count ?? '?' }) }}</span>
                 </label>
                 <label class="flex flex-col gap-1 text-xs">
                   <span class="font-medium text-text">{{ t('models.cpu.model') }}</span>
-                  <select v-model="cpuForm.model" class="rounded-lg border border-border bg-panel-2 px-2 py-1.5 text-sm text-text">
+                  <select v-model="cpuForm.model" class="rounded-lg border border-border bg-panel-2 px-2.5 py-2 text-sm text-text focus:border-accent1 focus:outline-none">
                     <option v-for="m in store.cpu?.models ?? []" :key="m" :value="m">{{ m }}</option>
                   </select>
                 </label>
                 <label class="flex flex-col gap-1 text-xs">
                   <span class="font-medium text-text">{{ t('models.cpu.idle') }}</span>
-                  <select v-model.number="cpuForm.idle_minutes" class="rounded-lg border border-border bg-panel-2 px-2 py-1.5 text-sm text-text">
+                  <select v-model.number="cpuForm.idle_minutes" class="rounded-lg border border-border bg-panel-2 px-2.5 py-2 text-sm text-text focus:border-accent1 focus:outline-none">
                     <option v-for="m in [5, 15, 30, 60, 0]" :key="m" :value="m">{{ m === 0 ? t('models.cpu.idleNever') : t('models.cpu.idleMin', { n: m }) }}</option>
                   </select>
                   <span class="leading-relaxed text-text-dim">{{ t('models.cpu.idleHint') }}</span>
                 </label>
               </fieldset>
               <p class="text-xs leading-relaxed text-text-dim">{{ t('models.cpu.speed') }}</p>
-              <p v-if="store.cpu?.restart_pending" class="text-xs text-status-queued">{{ t('models.cpu.restartPending') }}</p>
+              <p v-if="store.cpu?.restart_pending" class="rounded-lg bg-status-queued/10 px-3 py-2 text-xs text-status-queued">{{ t('models.cpu.restartPending') }}</p>
               <p v-if="store.cpu?.error" class="whitespace-pre-line rounded-lg bg-status-failed/10 p-2 text-xs text-status-failed">{{ store.cpu.error }}</p>
             </form>
-          </div>
-        </template>
+          </template>
 
-        <!-- ================= Demucs ================= -->
-        <template v-else-if="engine && engineId === 'demucs'">
-          <div class="mt-4 rounded-xl border border-border bg-panel p-4">
-            <div class="flex items-baseline justify-between gap-3">
-              <h3 class="text-sm font-semibold text-text">{{ t('models.demucs.model') }}</h3>
-              <span class="text-xs text-text-dim">{{ t('models.onDisk', { gb: gb(engine.on_disk ?? 0, locale) }) }}</span>
-            </div>
-            <div class="mt-3 flex flex-col gap-2 text-sm" role="radiogroup" :aria-label="t('models.demucs.model')">
-              <label v-for="m in engine.choices?.model ?? []" :key="m" class="flex items-start gap-2 text-text">
+          <!-- ================= Demucs ================= -->
+          <template v-else-if="engine && engineId === 'demucs'">
+            <h3 class="mt-4 text-[11px] font-semibold tracking-wider text-text-dim uppercase">{{ t('models.demucs.model') }}</h3>
+            <div class="mt-2 grid gap-3 sm:grid-cols-2" role="radiogroup" :aria-label="t('models.demucs.model')">
+              <label
+                v-for="m in engine.choices?.model ?? []"
+                :key="m"
+                class="flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm transition-colors"
+                :class="engine.settings?.model === m ? 'border-accent1/60 bg-accent1/10' : 'border-border bg-panel-2/40 hover:border-text-dim/60'"
+              >
                 <input type="radio" name="demucs-model" :value="m" :checked="engine.settings?.model === m" class="mt-1 accent-accent1" @change="setSetting('model', m)" />
-                <span><b class="font-medium">{{ m }}</b><span class="block text-xs leading-relaxed text-text-dim">{{ t(`models.demucs.models.${m}`) }}</span></span>
+                <span><b class="font-medium text-text">{{ m }}</b><span class="mt-0.5 block text-xs leading-relaxed text-text-dim">{{ t(`models.demucs.models.${m}`) }}</span></span>
               </label>
             </div>
-          </div>
-        </template>
+          </template>
+        </div>
       </section>
     </div>
   </div>

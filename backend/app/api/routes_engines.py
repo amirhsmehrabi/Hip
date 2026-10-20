@@ -4,6 +4,7 @@ Stable Audio 3's weights have their own routes (routes_sa3_weights.py)."""
 from __future__ import annotations
 
 import asyncio
+import os
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -51,18 +52,13 @@ def _engine(engine: str) -> dict:
 
 
 def _demucs_bytes() -> int:
-    """Demucs keeps its models in torch's hub cache (TORCH_HOME, or the default under the profile)."""
-    import os
-    from pathlib import Path
-
-    home = Path(os.getenv("TORCH_HOME") or Path.home() / ".cache" / "torch")
-    folder = home / "hub" / "checkpoints"
+    """Demucs fetches its models from Hugging Face (adefossez/HTDemucs) into the same cache Stable Audio uses."""
     total = 0
-    if folder.is_dir():
-        for f in folder.iterdir():
-            if "demucs" in f.name.lower():
+    for folder in features._hf_hub_dir().glob("models--adefossez--*"):
+        for root, _dirs, files in os.walk(folder):
+            for f in files:
                 try:
-                    total += f.stat().st_size
+                    total += os.lstat(os.path.join(root, f)).st_size
                 except OSError:
                     pass
     return total

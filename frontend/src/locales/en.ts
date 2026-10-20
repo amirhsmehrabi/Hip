@@ -1535,6 +1535,8 @@ export default {
     oneAtATime: 'Another model is downloading: they download one at a time',
     required: 'The engine needs it',
     settings: 'Settings',
+    diskTitle: 'Models on disk',
+    downloadingNow: 'downloading',
     weights: 'Weights',
     nav: 'Engines',
     total: 'Models on disk: {gb} GB',
