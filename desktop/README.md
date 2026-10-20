@@ -21,7 +21,7 @@ The frontend is unchanged: it uses relative `/api/...` URLs and the backend serv
 | macOS, Apple Silicon | packaged and set up by the same code, first tested by hand on a Mac (see the notes in the branch history); nothing needs to be installed beforehand |
 | Linux | packaging config exists, the first-run screen reports "not supported" until there are setup scripts (PR #2) |
 
-The download depends on what is picked on the first-run screen: about 18 GB for ACE-Step alone, about 36 GB with YuE2 (q8_0), stems and the ACE-Step base model, about 60 GB with everything including the XL base model. The screen asks for the picked parts' size plus a third for unpacking and caches.
+The download depends on what is picked on the first-run screen: about 18 GB for ACE-Step alone, about 36 GB with YuE2 (q8_0), stems and the ACE-Step base model, about 80 GB with everything, including the XL base model, Stable Audio 3 and the prompt assistant with their models. The screen asks for the picked parts' size plus a third for unpacking and caches.
 
 The Windows requirement comes from the prebuilt engine: the upstream `audio.cpp` CUDA 13.3 build (compute capability
 7.5 or newer, driver 580 or newer). No CUDA Toolkit, Visual Studio Build Tools or compiler is needed.
