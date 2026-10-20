@@ -6,6 +6,7 @@ import Yue2Page from './views/yue2/Yue2Page.vue'
 import StableAudioPage from './views/stable-audio/StableAudioPage.vue'
 import ProjectsListPage from './views/editor/ProjectsListPage.vue'
 import EditorPage from './views/editor/EditorPage.vue'
+import ModelsPage from './views/models/ModelsPage.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -16,6 +17,8 @@ const router = createRouter({
     { path: '/yue2', name: 'yue2', component: Yue2Page },
     { path: '/stable-audio', name: 'stable-audio', component: StableAudioPage },
     { path: '/editor', name: 'editor-projects', component: ProjectsListPage },
+    // Weights and settings of every engine: a settings page, reached from the gear in the header.
+    { path: '/models', name: 'models', component: ModelsPage },
     // A workspace: full width and one screen high on a desktop, no footer (see App.vue).
     { path: '/editor/:id', name: 'editor', component: EditorPage, props: true, meta: { workspace: true } },
   ],

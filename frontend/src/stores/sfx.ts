@@ -1,6 +1,7 @@
 import { acceptHMRUpdate, defineStore } from 'pinia'
 import * as sa3Api from '../api/stableAudio'
-import type { Sa3ModelId } from '../api/stableAudio'
+import { SA3_BASES } from '../api/stableAudio'
+import type { Sa3Device, Sa3ModelId } from '../api/stableAudio'
 import * as tracksApi from '../api/tracks'
 import { i18n } from '../i18n'
 
@@ -56,6 +57,8 @@ export interface SfxJob {
   taskId: string | null
   /** editor store `session` the job belongs to; results only go into that project. */
   session: number
+  /** The GPU engine, or the CPU sample server next to it. */
+  device: Sa3Device
   status: SfxStatus
   progress: number
   error: string | null
@@ -83,11 +86,12 @@ export const useSfxStore = defineStore('sfx', {
   }),
   actions: {
     /** `audio` is the mixed reference span when `request.reference` is set: the job then runs audio-to-audio. */
-    async submit(request: SfxRequest, session: number, audio: File | null = null): Promise<SfxJob> {
+    async submit(request: SfxRequest, session: number, audio: File | null = null, device: Sa3Device = 'gpu'): Promise<SfxJob> {
       this.jobs.unshift({
         id: crypto.randomUUID(),
         taskId: null,
         session,
+        device,
         status: 'queued',
         progress: 0,
         error: null,
@@ -103,7 +107,7 @@ export const useSfxStore = defineStore('sfx', {
           steps: 8, cfg_scale: 1, seed: -1, batch_size: request.count, trim_silence: request.trimSilence || undefined,
           // Stable Audio's noise level is the opposite of closeness.
           init_noise_level: ref ? Math.min(1, Math.max(0, 1 - ref.closeness)) : undefined,
-        }, ref ? audio : null)
+        }, ref ? audio : null, SA3_BASES[device])
         job.taskId = res.job_id
         this._ensurePolling()
       } catch (e) {
@@ -125,11 +129,16 @@ export const useSfxStore = defineStore('sfx', {
     async _poll() {
       const waiting = this.jobs.filter((j) => (j.status === 'queued' || j.status === 'running') && j.taskId)
       if (waiting.length === 0) return
-      let states: sa3Api.Sa3JobState[]
-      try {
-        states = await sa3Api.queryJobs(waiting.map((j) => j.taskId as string))
-      } catch {
-        return // backend or engine restarting; next tick retries
+      // one query per server: the GPU engine and the CPU sample server keep their own job ids
+      const states: sa3Api.Sa3JobState[] = []
+      for (const device of ['gpu', 'cpu'] as Sa3Device[]) {
+        const ids = waiting.filter((j) => (j.device ?? 'gpu') === device).map((j) => j.taskId as string)
+        if (!ids.length) continue
+        try {
+          states.push(...await sa3Api.queryJobs(ids, SA3_BASES[device]))
+        } catch {
+          // that server is restarting; the next tick retries
+        }
       }
       for (const st of states) {
         const job = waiting.find((j) => j.taskId === st.job_id)
@@ -137,7 +146,7 @@ export const useSfxStore = defineStore('sfx', {
         if (st.status === 'done') {
           job.status = 'saving'
           job.progress = 100
-          void this._persist(job, st.files.map((f) => sa3Api.audioUrl(f)), st.durations)
+          void this._persist(job, st.files.map((f) => sa3Api.audioUrl(f, SA3_BASES[job.device ?? 'gpu'])), st.durations)
         } else if (st.status === 'failed' || st.status === 'cancelled') {
           job.status = st.status
           job.error = st.error || (st.status === 'failed' ? t('storeErrors.unknownError') : null)
@@ -163,7 +172,7 @@ export const useSfxStore = defineStore('sfx', {
               lyrics: '',
               duration_ms: durationSec != null ? Math.round(durationSec * 1000) : undefined,
               params: {
-                sfx: true, kind: r.kind, caption: r.caption, prompt: sfxPrompt(r), engine: 'sa3', model: r.model,
+                sfx: true, kind: r.kind, caption: r.caption, prompt: sfxPrompt(r), engine: 'sa3', model: r.model, device: job.device,
                 bpm: r.bpm, bars: r.kind === 'loop' ? r.bars : undefined, duration: r.duration, index: i,
                 ...(r.reference ? { ref_lanes: r.reference.laneIds, ref_range: [r.reference.start, r.reference.end], closeness: r.reference.closeness } : {}),
               },
@@ -185,7 +194,7 @@ export const useSfxStore = defineStore('sfx', {
       if (!job) return
       if (job.taskId) {
         try {
-          await sa3Api.cancelJob(job.taskId)
+          await sa3Api.cancelJob(job.taskId, SA3_BASES[job.device ?? 'gpu'])
         } catch {
           // already finished or the engine is gone; the local state below still applies
         }

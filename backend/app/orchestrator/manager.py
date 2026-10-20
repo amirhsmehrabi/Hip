@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from .. import engine_settings
 from ..config import ALLOW_CONCURRENT_MODELS, MODELS
 from .process import ManagedProcess, StartCancelled
 from .state import ModelRuntimeState, ModelStatus, OrchestratorState
@@ -34,6 +35,8 @@ class OrchestratorManager:
         self._cancel_start: dict[str, asyncio.Event] = {}
         self._stop_requests = 0
         self._watchdog: asyncio.Task | None = None
+        # The engine settings each running model was started with (app/engine_settings.py).
+        self.started_settings: dict[str, dict[str, str]] = {}
 
     def start_watchdog(self) -> None:
         if self._watchdog is None:
@@ -127,14 +130,14 @@ class OrchestratorManager:
                 await self._stop_model(model_id)
 
     async def _start_model(self, model_id: str) -> None:
-        definition = MODELS[model_id]
         rs = self.state.models[model_id]
         rs.status = ModelStatus.STARTING
         rs.error_message = None
         started: list[ManagedProcess] = []
         cancel = self._cancel_start[model_id] = asyncio.Event()
         try:
-            for spec in definition.processes:
+            settings = engine_settings.get(model_id) if model_id in engine_settings.DEFAULTS else {}
+            for spec in engine_settings.processes_for(model_id):
                 if cancel.is_set():
                     raise StartCancelled(f"start of '{model_id}' was cancelled")
                 proc = ManagedProcess(spec)
@@ -142,6 +145,7 @@ class OrchestratorManager:
                 started.append(proc)
                 await proc.wait_healthy(cancel)
             self._processes[model_id] = started
+            self.started_settings[model_id] = settings
             rs.status = ModelStatus.RUNNING
             self.state.active_model = model_id
         except StartCancelled:
@@ -179,6 +183,7 @@ class OrchestratorManager:
         rs = self.state.models[model_id]
         rs.status = ModelStatus.STOPPING
         await self._stop_processes(model_id)
+        self.started_settings.pop(model_id, None)
         rs.status = ModelStatus.STOPPED
         rs.error_message = None
         if self.state.active_model == model_id:

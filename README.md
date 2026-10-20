@@ -179,9 +179,15 @@ Every run gives 2–4 variants, each on its own lane next to the source, so you 
 
 The **Samples** button next to the arranger makes sounds rather than parts: a **one-shot** (a kick, a hit, a whoosh), a **loop** of 1–8 bars at the project tempo, or a **texture** (rain, a crowd, a drone), from a short description in the style of a sample library. Results line up in a strip: listen first, then add the one you like to a new track or to the selected track at the playhead (or at the loop start). Loops are cut to whole bars, but the model does not guarantee a seamless join, so check them on repeat. Dismissing a job deletes its sounds from the library and the disk, except those a track still plays; those stay under the library's *Samples* filter. Needs Stable Audio 3 (the `small-sfx` checkpoint is the sound model; `medium` does sounds too). Two options help the raw output: *Trim leading silence* for one-shots (the clip starts on the attack) and *Seamless join* for loops (a 30 ms crossfade of the tail into the head, saved as its own library file).
 
+**Samples on the CPU.** With *Make samples on the CPU* switched on (Models page → Stable Audio 3), the panel sends its jobs to a second Stable Audio server running on the processor, so ACE-Step or YuE2 stay on the GPU and nothing is unloaded. It starts with the first sample (about 10 s), takes about 3 GB of RAM and stops after a chosen time without use. The settings: when to use it (only when Stable Audio is not already on the GPU, or always), CPU threads, the model (`small-sfx` or `small-music`) and the idle time. For reference, on a 16-core Ryzen 9 9950X a 2 s one-shot takes about 13 s, 10 s of sound about 45 s.
+
 On the Stable Audio 3 page itself: a description per variant (an A/B of two prompts in one run), automatic service tags (`TrackType: Music, VocalType: Instrumental` or `TrackType: SFX`, unless you typed a TrackType tag), several ranges to redo in one repaint, and the base checkpoints (`medium-base` and the small ones) when they are downloaded, with 50 steps, CFG 7 and a working negative prompt.
 
 ---
+
+### Models and settings
+
+The gear in the header opens the **Models** page: for every engine the weights it can download and the settings it starts with. ACE-Step: the core bundle, the other DiT checkpoints (`sft`, `base`, the XL ones) and the 0.6B and 4B language models, plus which DiT and language model it starts with. YuE2: the shared weights and the `q8_0` / `q4_0` main models. Stable Audio 3: the six checkpoints with the Hugging Face token, the model warmed up at start, and samples on the CPU. Demucs: `htdemucs` or the fine-tuned, slower `htdemucs_ft`. Downloads run in the background one at a time and can be stopped; a stopped one resumes. An engine's settings apply on its next start, and the page offers a restart when it runs with the old ones.
 
 ## Architecture
 
@@ -323,7 +329,7 @@ ACE-Step's own weights don't need a separate download — `acestep-api` pulls
 them from HuggingFace/ModelScope on first request, the same way its Gradio
 UI does.
 
-**Stable Audio 3 weights** are downloaded in the app. The Stable Audio 3 page lists the six checkpoints with their sizes, a *Download* button and the progress; a download can be stopped (finished files are kept, the file it was on starts over next time) and keeps running while you use other pages. `medium`, `small-music` and `small-sfx` are gated on Hugging Face: sign in there, press *Agree* on the model page, create a token with the *Read* role and paste it on the same page (it is saved to the Hugging Face cache, as `hf auth login` would). The `-base` checkpoints are open. Without the app: `setup_models.bat -StableAudioModels small-sfx,medium` (macOS: `--stable-audio-models=small-music,small-sfx`, Linux: `STABLE_AUDIO_MODELS="medium small-sfx"`), or `python -m sa3_server.download medium` with `external/sa3-server`'s own Python.
+**Stable Audio 3 weights** are downloaded in the app. The Models page (the gear in the header) lists the six checkpoints with their sizes, a *Download* button and the progress; a download can be stopped (finished files are kept, the file it was on starts over next time) and keeps running while you use other pages. `medium`, `small-music` and `small-sfx` are gated on Hugging Face: sign in there, press *Agree* on the model page, create a token with the *Read* role and paste it on the same page (it is saved to the Hugging Face cache, as `hf auth login` would). The `-base` checkpoints are open. Without the app: `setup_models.bat -StableAudioModels small-sfx,medium` (macOS: `--stable-audio-models=small-music,small-sfx`, Linux: `STABLE_AUDIO_MODELS="medium small-sfx"`), or `python -m sa3_server.download medium` with `external/sa3-server`'s own Python.
 
 The script is idempotent — safe to re-run (the `-SkipBuild` / `-SkipWeights`
 flags skip the corresponding steps). It expects `git`,

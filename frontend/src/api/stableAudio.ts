@@ -75,6 +75,9 @@ export interface Sa3JobState {
 }
 
 const BASE = '/api/sa3'
+/** Where a job runs: the engine on the GPU (orchestrated), or the CPU sample server next to it (backend/app/sfx_cpu.py). */
+export type Sa3Device = 'gpu' | 'cpu'
+export const SA3_BASES: Record<Sa3Device, string> = { gpu: BASE, cpu: '/api/sa3cpu' }
 
 export function health(): Promise<Sa3Health> {
   return apiFetch<Sa3Health>(`${BASE}/health`)
@@ -88,7 +91,7 @@ export function loadModel(model: Sa3ModelId): Promise<{ loaded: Sa3ModelId[] }> 
   return apiJson(`${BASE}/v1/models/load`, { model })
 }
 
-export function submitJob(req: Sa3JobRequest, audio?: File | Blob | null): Promise<Sa3JobCreated> {
+export function submitJob(req: Sa3JobRequest, audio?: File | Blob | null, base: string = BASE): Promise<Sa3JobCreated> {
   const form = new FormData()
   for (const [k, v] of Object.entries(req)) {
     if (v == null) continue
@@ -96,18 +99,18 @@ export function submitJob(req: Sa3JobRequest, audio?: File | Blob | null): Promi
     else form.append(k, String(v))
   }
   if (audio) form.append('audio', audio, 'context.wav')
-  return apiFetch<Sa3JobCreated>(`${BASE}/v1/jobs`, { method: 'POST', body: form })
+  return apiFetch<Sa3JobCreated>(`${base}/v1/jobs`, { method: 'POST', body: form })
 }
 
-export function queryJobs(ids: string[]): Promise<Sa3JobState[]> {
-  return apiJson<Sa3JobState[]>(`${BASE}/v1/jobs/query`, { ids })
+export function queryJobs(ids: string[], base: string = BASE): Promise<Sa3JobState[]> {
+  return apiJson<Sa3JobState[]>(`${base}/v1/jobs/query`, { ids })
 }
 
-export async function cancelJob(id: string): Promise<void> {
-  await apiJson(`${BASE}/v1/jobs/${encodeURIComponent(id)}/cancel`, {})
+export async function cancelJob(id: string, base: string = BASE): Promise<void> {
+  await apiJson(`${base}/v1/jobs/${encodeURIComponent(id)}/cancel`, {})
 }
 
 /** The browser-side URL of a file a job reported. */
-export function audioUrl(serverPath: string): string {
-  return `${BASE}${serverPath}`
+export function audioUrl(serverPath: string, base: string = BASE): string {
+  return `${base}${serverPath}`
 }

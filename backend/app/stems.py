@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Optional
 
-from . import db
+from . import db, engine_settings
 from .config import DEMUCS_DIR, FFMPEG_BIN_DIR, LOG_DIR
 from .orchestrator.process import tail_log
 
@@ -147,7 +147,7 @@ async def _run(track_id: int) -> None:
 
             with open(log_path, "w", encoding="utf-8", errors="replace") as log_file:
                 proc = await asyncio.create_subprocess_exec(
-                    "uv", "run", "demucs", "-n", "htdemucs", "-o", str(out_dir), str(audio_path),
+                    "uv", "run", "demucs", "-n", engine_settings.get("demucs")["model"], "-o", str(out_dir), str(audio_path),
                     cwd=str(DEMUCS_DIR),
                     env=env,
                     stdout=log_file,
