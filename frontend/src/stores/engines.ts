@@ -26,15 +26,14 @@ export const useEnginesStore = defineStore('engines', {
   }),
   actions: {
     async load() {
-      try {
-        const [state, cpu, assistant] = await Promise.all([api.getEngines(), api.getCpuSampler(), assistantApi.getAssistant()])
-        this._apply(state)
-        this.cpu = cpu
-        this.assistant = assistant
-        this.loadError = null
-      } catch (e) {
-        this.loadError = e instanceof Error ? e.message : String(e)
-      }
+      // Each part on its own: one request failing (the CPU sampler's state answered 500 now and then) must not
+      // leave the others empty, or the idea page reads a missing assistant as "its model is not downloaded".
+      const [state, cpu, assistant] = await Promise.allSettled([api.getEngines(), api.getCpuSampler(), assistantApi.getAssistant()])
+      if (state.status === 'fulfilled') this._apply(state.value)
+      if (cpu.status === 'fulfilled') this.cpu = cpu.value
+      if (assistant.status === 'fulfilled') this.assistant = assistant.value
+      const failed = [state, cpu, assistant].find((r): r is PromiseRejectedResult => r.status === 'rejected')
+      this.loadError = failed ? (failed.reason instanceof Error ? failed.reason.message : String(failed.reason)) : null
       this._follow()
     },
     async download(part: string) {
