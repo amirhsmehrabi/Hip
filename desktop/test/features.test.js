@@ -5,24 +5,24 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const manifest = require('../manifest.json');
-const { DEFAULT_SELECTION, detectInstalled, resolveSelection, weightPackages, featureSizes, excludedComponents } = require('../src/bootstrap/features');
+const { DEFAULT_SELECTION, detectInstalled, resolveSelection, weightPackages, featureSizes, excludedComponents, sa3Offered, sa3Defaults } = require('../src/bootstrap/features');
 const { buildComponents, treeHash } = require('../src/bootstrap/components');
 const { runChecks } = require('../src/bootstrap/checks');
 const { layout, IS_WINDOWS } = require('../src/paths');
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'remiqora-features-'));
-const nothing = { yue2: false, yue2Precisions: [], demucs: false, aceBase: false, aceXl: false, stableAudio: false, assistant: false };
+const nothing = { yue2: false, yue2Precisions: [], demucs: false, aceBase: false, aceXl: false, stableAudio: false, sa3Models: [], assistant: false };
 const ids = (sel) => buildComponents({ L: layout(tmp(), 'win32-x64', manifest), manifest, platform: 'win32-x64', resources: { acePatch: 'x', backend: 'x' }, selection: sel }).map((c) => c.id);
 
 test('a fresh install gets the defaults, an older one keeps everything', () => {
   assert.deepEqual(resolveSelection(null, nothing), { ...DEFAULT_SELECTION, yue2Precisions: ['q8_0'] });
-  assert.deepEqual(resolveSelection(null, nothing, { legacyInstall: true }), { yue2: true, yue2Precisions: ['q8_0', 'q4_0'], demucs: true, aceBase: false, aceXl: false, stableAudio: false, assistant: false });
+  assert.deepEqual(resolveSelection(null, nothing, { legacyInstall: true }), { yue2: true, yue2Precisions: ['q8_0', 'q4_0'], demucs: true, aceBase: false, aceXl: false, stableAudio: false, sa3Models: [], assistant: false });
 });
 
 test('the selection never drops what is installed, and YuE2 always has a precision', () => {
-  const installed = { yue2: true, yue2Precisions: ['q4_0'], demucs: true, aceBase: false, aceXl: false, stableAudio: true, assistant: false };
+  const installed = { yue2: true, yue2Precisions: ['q4_0'], demucs: true, aceBase: false, aceXl: false, stableAudio: true, sa3Models: [], assistant: false };
   const sel = resolveSelection({ yue2: false, yue2Precisions: [], demucs: false, aceBase: true }, installed);
-  assert.deepEqual(sel, { yue2: true, yue2Precisions: ['q4_0'], demucs: true, aceBase: true, aceXl: false, stableAudio: true, assistant: false });
+  assert.deepEqual(sel, { yue2: true, yue2Precisions: ['q4_0'], demucs: true, aceBase: true, aceXl: false, stableAudio: true, sa3Models: [], assistant: false });
   assert.deepEqual(resolveSelection({ yue2: true, yue2Precisions: [] }, nothing).yue2Precisions, ['q8_0']);
 });
 
@@ -39,7 +39,7 @@ test('components left out with their feature', () => {
   assert.deepEqual(ids({ ...nothing, aceXl: true }), ['uv', 'ffmpeg', 'backend-env', 'ace-step', 'ace-models', 'ace-xl-model']);
   assert.deepEqual(ids({ ...nothing, stableAudio: true }), ['uv', 'ffmpeg', 'backend-env', 'ace-step', 'ace-models', 'stable-audio']);
   assert.deepEqual(ids({ ...nothing, assistant: true }), ['uv', 'ffmpeg', 'backend-env', 'ace-step', 'ace-models', 'prompt-assistant']);
-  assert.deepEqual(excludedComponents({ yue2: true, demucs: false, aceBase: false, aceXl: false, stableAudio: false, assistant: false }), ['demucs', 'ace-base-model', 'ace-xl-model', 'stable-audio', 'prompt-assistant']);
+  assert.deepEqual(excludedComponents({ yue2: true, demucs: false, aceBase: false, aceXl: false, stableAudio: false, assistant: false }), ['demucs', 'ace-base-model', 'ace-xl-model', 'stable-audio', 'sa3-models', 'prompt-assistant']);
 });
 
 test('sizes: YuE2 grows with each precision', () => {
@@ -58,7 +58,7 @@ test('what is installed is read from disk', () => {
   put(path.join(L.yue2, 'models', 'Yue2-3B-GGUF', 'yue2-3b-q4_0.gguf'));
   fs.mkdirSync(path.join(L.demucs, '.venv'), { recursive: true });
   fs.mkdirSync(path.join(L.stableAudio, '.venv'), { recursive: true });
-  assert.deepEqual(detectInstalled(L), { yue2: true, yue2Precisions: ['q4_0'], demucs: true, aceBase: false, aceXl: false, stableAudio: true, assistant: false });
+  assert.deepEqual(detectInstalled(L), { yue2: true, yue2Precisions: ['q4_0'], demucs: true, aceBase: false, aceXl: false, stableAudio: true, sa3Models: [], assistant: false });
 });
 
 test('the Stable Audio 3 step follows its server sources', () => {
@@ -85,4 +85,38 @@ test('the disk check asks for what the picked parts need', async () => {
   assert.equal(small.blocking, null);
   const huge = await runChecks({ platform: 'darwin-arm64', dataRoot: dir, manifest, requiredBytes: Number.MAX_SAFE_INTEGER, fetchImpl: online });
   assert.equal(huge.blocking.code, 'no-disk');
+});
+
+test('Stable Audio 3 checkpoints: picked with it, kept once on disk, medium only where CUDA runs', () => {
+  assert.deepEqual(sa3Offered(manifest, 'win32-x64'), ['medium', 'small-music', 'small-sfx']);
+  assert.deepEqual(sa3Offered(manifest, 'darwin-arm64'), ['small-music', 'small-sfx']);
+  assert.deepEqual(sa3Defaults(manifest, 'win32-x64'), ['medium', 'small-sfx']);
+  assert.deepEqual(sa3Defaults(manifest, 'darwin-arm64'), ['small-music', 'small-sfx']);
+  // without Stable Audio itself the checkpoints are not picked, but the ones on disk stay
+  assert.deepEqual(resolveSelection({ ...nothing, sa3Models: ['medium'] }, nothing).sa3Models, []);
+  assert.deepEqual(resolveSelection({ ...nothing, stableAudio: true, sa3Models: ['small-sfx', 'medium'] }, nothing).sa3Models, ['medium', 'small-sfx']);
+  assert.deepEqual(resolveSelection({ ...nothing, stableAudio: true, sa3Models: [] }, { ...nothing, stableAudio: true, sa3Models: ['small-music'] }).sa3Models, ['small-music']);
+});
+
+test('the checkpoints step follows the picked list, after the server', () => {
+  assert.deepEqual(ids({ ...nothing, stableAudio: true, sa3Models: ['small-sfx'] }), ['uv', 'ffmpeg', 'backend-env', 'ace-step', 'ace-models', 'stable-audio', 'sa3-models']);
+  const step = buildComponents({ L: layout(tmp(), 'win32-x64', manifest), manifest, platform: 'win32-x64', resources: { acePatch: 'x', backend: 'x' }, selection: { ...nothing, stableAudio: true, sa3Models: ['medium', 'small-sfx'] } })
+    .find((c) => c.id === 'sa3-models');
+  assert.equal(step.version, 'medium+small-sfx');
+  assert.equal(step.weight, manifest.stableAudio.models.medium.bytes + manifest.stableAudio.models['small-sfx'].bytes);
+  const sizes = featureSizes(manifest, 'win32-x64', { yue2Precisions: ['q8_0'], sa3Models: ['small-sfx'] });
+  assert.equal(sizes.stableAudio, manifest.stableAudio.approxBytes + manifest.stableAudio.models['small-sfx'].bytes);
+});
+
+test('a checkpoint counts as installed only with its text encoder, in any snapshot', async () => {
+  const L = layout(tmp(), 'win32-x64', manifest);
+  const snap = path.join(L.hfHome, 'hub', 'models--stabilityai--stable-audio-3-small-sfx', 'snapshots', 'abc123');
+  const put = (file) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, ''); };
+  put(path.join(snap, 'model.safetensors'));
+  assert.deepEqual(detectInstalled(L).sa3Models, [], 'the DiT alone is not enough');
+  put(path.join(snap, 't5gemma-b-b-ul2', 'model.safetensors'));
+  assert.deepEqual(detectInstalled(L).sa3Models, ['small-sfx']);
+  const step = buildComponents({ L, manifest, platform: 'win32-x64', resources: { acePatch: 'x', backend: 'x' }, selection: { ...nothing, stableAudio: true, sa3Models: ['small-sfx'] } })
+    .find((c) => c.id === 'sa3-models');
+  assert.equal(await step.verify(), true);
 });

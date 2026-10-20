@@ -8,12 +8,16 @@ const { runChecks } = require('./bootstrap/checks');
 const { describePlan, runSetup, isSetupComplete } = require('./bootstrap/run');
 const { BackendServer } = require('./server');
 const { loadConfig, updateConfig, ensureWritableDir } = require('./config');
-const { FEATURE_IDS, PRECISIONS, detectInstalled, resolveSelection, featureSizes } = require('./bootstrap/features');
+const { FEATURE_IDS, PRECISIONS, detectInstalled, resolveSelection, featureSizes, sa3Offered, sa3Defaults } = require('./bootstrap/features');
+const { signInWithHuggingFace } = require('./hfLogin');
 
 // Only these links can be opened from the first-run screen.
 const EXTERNAL = {
   'nvidia-drivers': 'https://www.nvidia.com/drivers',
   issues: 'https://github.com/inikolax/remiqora/issues/new',
+  'hf-token': 'https://huggingface.co/settings/tokens/new?tokenType=read',
+  // each Stable Audio 3 page, where the licence is accepted
+  ...Object.fromEntries(Object.entries(manifest.stableAudio.models).map(([id, m]) => [`hf-${id}`, `https://huggingface.co/${m.repo}`])),
 };
 const SETUP_PAGE = path.join(__dirname, '..', 'renderer', 'index.html');
 
@@ -27,6 +31,9 @@ let setupAbort = null;
 let quitting = false;
 let savedPort = null;
 let savedFeatures = null;
+// A Hugging Face token the first-run screen checked; written into the chosen folder when the setup starts.
+let pendingHfToken = null;
+let hfSignIn = null; // the browser sign-in waiting for its redirect
 
 /** The context every setup call works with; `selection` is what the user picked, widened by what is installed. */
 function buildContext(dataRoot) {
@@ -54,6 +61,7 @@ async function saveFeatures(picked) {
     aceBase: !!picked.aceBase,
     aceXl: !!picked.aceXl,
     stableAudio: !!picked.stableAudio,
+    sa3Models: sa3Offered(manifest, PLATFORM).filter((m) => Array.isArray(picked.sa3Models) && picked.sa3Models.includes(m)),
     assistant: !!picked.assistant,
   };
   savedFeatures = clean;
@@ -66,8 +74,42 @@ async function saveFeatures(picked) {
  * was picked but not finished (an "add" left half way) does not hold the app back; its Install button resumes it.
  */
 function coreContext() {
-  const none = { yue2: false, yue2Precisions: [], demucs: false, aceBase: false, aceXl: false, stableAudio: false, assistant: false };
+  const none = { yue2: false, yue2Precisions: [], demucs: false, aceBase: false, aceXl: false, stableAudio: false, sa3Models: [], assistant: false };
   return { ...ctx, selection: resolveSelection(none, ctx.installed) };
+}
+
+const hfTokenFile = () => path.join(ctx.L.hfHome, 'token');
+const savedHfToken = () => { try { return fs.readFileSync(hfTokenFile(), 'utf8').trim(); } catch { return ''; } };
+
+/**
+ * Checks a Hugging Face token (or the one saved in the chosen folder) against the Stable Audio 3 checkpoints picked:
+ * whose token it is, and which gated repos it may not download yet (the licence not accepted on the model page).
+ * Hugging Face answers a file request on a gated repo with 403 until then. The token never leaves this process
+ * except to huggingface.co.
+ */
+async function checkHfToken(token, models) {
+  const use = String(token || '').trim() || pendingHfToken || savedHfToken();
+  if (!use) return { ok: false, code: 'empty' };
+  const get = (url, method = 'GET') => fetch(url, { method, headers: { Authorization: `Bearer ${use}` }, redirect: 'manual', signal: AbortSignal.timeout(20000) });
+  let user = '';
+  try {
+    const who = await get('https://huggingface.co/api/whoami-v2');
+    if (who.status === 401) return { ok: false, code: 'login' };
+    if (!who.ok) return { ok: false, code: 'network' };
+    user = (await who.json()).name || '';
+    const denied = [];
+    for (const m of models) {
+      const repo = manifest.stableAudio.models[m] && manifest.stableAudio.models[m].repo;
+      if (!repo) continue;
+      const res = await get(`https://huggingface.co/${repo}/resolve/main/${manifest.stableAudio.requiredFiles[0]}`, 'HEAD');
+      if (res.status === 401 || res.status === 403) denied.push(m);
+      else if (res.status >= 400) return { ok: false, code: 'network' };
+    }
+    if (String(token || '').trim()) pendingHfToken = use;
+    return { ok: denied.length === 0, user, denied, checked: models };
+  } catch {
+    return { ok: false, code: 'network' };
+  }
 }
 
 /** Free space the pending part of the plan needs: downloads plus unpacking and caches, about a third more. */
@@ -167,6 +209,10 @@ function registerIpc() {
         baseBytes: always.reduce((a, c) => a + c.weight, 0),
         // the XL model's video memory hint, compared on screen with the card found by the checks
         xlVramMiB: manifest.aceXlModel.recommendedVramMiB,
+        // the Stable Audio 3 checkpoints this system can run, the ones ticked with it, and whether a token is saved
+        sa3Models: sa3Offered(manifest, PLATFORM),
+        sa3Defaults: sa3Defaults(manifest, PLATFORM),
+        hfTokenSaved: !!pendingHfToken || !!savedHfToken(),
         // nothing picked yet: the screen may still adjust the defaults to the card (q4_0 on a small one)
         untouched: savedFeatures === null,
       },
@@ -186,6 +232,21 @@ function registerIpc() {
   ipcMain.handle('setup:checks', async (_e, dataRoot) =>
     runChecks({ platform: PLATFORM, dataRoot: dataRoot || ctx.L.root, manifest, requiredBytes: neededBytes(await describePlan(ctx)) }));
   ipcMain.handle('setup:set-features', async (_e, picked) => { await saveFeatures(picked || {}); });
+  ipcMain.handle('setup:hf-check', (_e, token, models) => checkHfToken(token, Array.isArray(models) ? models : []));
+  // the other way to the same token: sign in in the browser; a second click starts over
+  ipcMain.handle('setup:hf-signin', async (_e, models) => {
+    if (hfSignIn) hfSignIn.abort();
+    const mine = (hfSignIn = new AbortController());
+    try {
+      const token = await signInWithHuggingFace({ openUrl: (url) => shell.openExternal(url), signal: mine.signal });
+      if (win && !win.isDestroyed()) win.focus();
+      return await checkHfToken(token, Array.isArray(models) ? models : []);
+    } catch (err) {
+      return { ok: false, code: err.code === 'aborted' ? 'aborted' : err.code === 'denied' ? 'denied-login' : err.code === 'timeout' ? 'timeout' : 'network' };
+    } finally {
+      if (hfSignIn === mine) hfSignIn = null;
+    }
+  });
   // From the app: a "not installed" screen asks to add a part. Pick it and show the setup screen to download it.
   ipcMain.handle('app:add-features', async (_e, ids) => {
     if (setupAbort) return;
@@ -194,6 +255,8 @@ function registerIpc() {
       if (FEATURE_IDS.includes(id)) next[id] = true;
       if (PRECISIONS.includes(id)) { next.yue2 = true; next.yue2Precisions = [...new Set([...next.yue2Precisions, id])]; }
     }
+    // Stable Audio 3 comes with its usual checkpoints ticked, as on the first run; the screen can untick them
+    if (next.stableAudio && !ctx.installed.stableAudio && !(next.sa3Models || []).length) next.sa3Models = sa3Defaults(manifest, PLATFORM);
     await saveFeatures(next);
     await showSetup({ state: 'add' });
   });
@@ -221,6 +284,12 @@ function registerIpc() {
     // and the parts as they stand, defaults included: without a saved pick the next start would take this for an
     // install from before the choice existed and pick everything
     await saveFeatures(ctx.selection);
+    // where huggingface_hub (the Stable Audio downloader, the app's Models page) looks for it
+    if (pendingHfToken) {
+      await fs.promises.mkdir(ctx.L.hfHome, { recursive: true });
+      await fs.promises.writeFile(hfTokenFile(), pendingHfToken);
+      pendingHfToken = null;
+    }
     startSetup();
   });
   ipcMain.handle('setup:pause', () => { if (setupAbort) setupAbort.abort(new Error('paused')); });

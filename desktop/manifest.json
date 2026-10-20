@@ -99,8 +99,14 @@
     "approxBytes": 4000000000
   },
   "stableAudio": {
-    "_comment": "The sa3-server environment (torch 2.7.1, Flash Attention on Windows/Linux). The weights are gated on Hugging Face and are downloaded from the app, not here.",
-    "approxBytes": 4500000000
+    "_comment": "The sa3-server environment (torch 2.7.1, Flash Attention on Windows/Linux), and the checkpoints picked on the first-run screen. They are gated on Hugging Face: the screen takes the user's token and checks it before the download. The base checkpoints and the rest stay on the app's Models page. Sizes as in backend/app/sa3_weights.py.",
+    "approxBytes": 4500000000,
+    "models": {
+      "medium": { "repo": "stabilityai/stable-audio-3-medium", "bytes": 10443853326, "gpuOnly": true },
+      "small-music": { "repo": "stabilityai/stable-audio-3-small-music", "bytes": 3492098062, "gpuOnly": false },
+      "small-sfx": { "repo": "stabilityai/stable-audio-3-small-sfx", "bytes": 3492098062, "gpuOnly": false }
+    },
+    "requiredFiles": ["model.safetensors", "t5gemma-b-b-ul2/model.safetensors"]
   },
   "weights": {
     "packageOrder": [

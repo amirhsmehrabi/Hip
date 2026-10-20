@@ -66,7 +66,7 @@ Optional (ids from [`src/bootstrap/features.js`](src/bootstrap/features.js)):
 | `demucs` | `demucs` | on |
 | `aceBase` | `ace-base-model` (`acestep-v15-base`, ~4.8 GB) | off |
 | `aceXl` | `ace-xl-model` (`acestep-v15-xl-base`, ~20 GB, warned below 16 GB of video memory) | off |
-| `stableAudio` | `stable-audio` (the sa3-server environment, ~4.5 GB; the gated weights are downloaded later on the app's Stable Audio 3 page) | off |
+| `stableAudio` | `stable-audio` (the sa3-server environment, ~4.5 GB) and `sa3-models` (the checkpoints ticked under it, `sa3Models`; gated, so the screen signs in with Hugging Face in the browser, `src/hfLogin.js`, or checks a pasted token, and writes it to `cache/huggingface/token` at the start) | off |
 | `assistant` | `prompt-assistant` (the prompt assistant's environment for *From an idea*, ~4 GB, mostly linked from the uv cache when Stable Audio 3 is picked too; its Qwen3.5 model is downloaded later on the app's Models page) | off |
 
 The choice is saved as `features` in the user-data `config.json` and is always widened by what is already on disk, so a

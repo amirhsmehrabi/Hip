@@ -135,3 +135,11 @@ test('withRetries does not retry after an abort', async () => {
     { signal: ac.signal, backoffMs: 1 }), /cancelled/);
   assert.equal(calls, 1);
 });
+
+test('withRetries gives up at once on an error it is told not to retry', async () => {
+  const { withRetries } = require('../src/bootstrap/download');
+  let calls = 0;
+  const refused = Object.assign(new Error('licence not accepted'), { code: 'access' });
+  await assert.rejects(withRetries(async () => { calls++; throw refused; }, { backoffMs: 1, shouldRetry: (err) => err.code !== 'access' }), /licence/);
+  assert.equal(calls, 1);
+});

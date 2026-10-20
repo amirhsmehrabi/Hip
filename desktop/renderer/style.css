@@ -94,3 +94,18 @@ details pre { margin: 6px 0 0; padding: 14px 16px; background: var(--panel); bor
 .note.bad { color: var(--err); }
 .warnline { grid-column: 2 / 4; margin: 4px 0 0; color: var(--warn); font-size: .8125rem; }
 .warnline.bad { color: var(--err); }
+
+/* Stable Audio 3: the gated checkpoints need a Hugging Face account, by browser sign-in or a pasted token. */
+.hf { grid-column: 2 / 4; margin-top: 10px; padding: 14px 16px; background: var(--panel); border: 1px solid var(--hairline); border-radius: 10px; font-size: .875rem; }
+.hf .text { margin: 0; }
+.hfsteps { margin: 8px 0 12px; padding-left: 20px; color: var(--soft); }
+.hfsteps li { margin: 4px 0; }
+.hfrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 8px 0; }
+.hfrow .lbl { color: var(--mute); }
+.hfrow input { flex: 1 1 18ch; min-width: 0; min-height: 44px; padding: 0 12px; background: #16161d; color: var(--paper); border: 1px solid var(--edge); border-radius: 8px; font: .875rem ui-monospace, 'Cascadia Mono', Consolas, monospace; }
+.hfrow .btn { min-height: 44px; padding: 0 18px; }
+.btn.link { min-height: 0; padding: 0; border: 0; color: var(--violet); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
+.btn.link:hover { color: var(--violet-hi); }
+.hfstatus { min-height: 1.4em; margin: 6px 0; color: var(--soft); }
+.hfstatus.ok { color: var(--ok); }
+.hfstatus.bad { color: var(--err); }

@@ -127,13 +127,87 @@
         ${pickRow({ id: 'yue2', checked: sel.yue2, fixed: inst.yue2 && 'installed', size: f.sizes.yue2, title: t('pick.yue2'), text: t('pick.yue2.text'),
           children: `<div class="precs" role="group" aria-label="${esc(t('pick.prec'))}"><span class="lbl">${esc(t('pick.prec'))}</span>${precisions}</div>` })}
         ${pickRow({ id: 'demucs', checked: sel.demucs, fixed: inst.demucs && 'installed', size: f.sizes.demucs, title: t('pick.demucs'), text: t('pick.demucs.text') })}
-        ${pickRow({ id: 'stableAudio', checked: sel.stableAudio, fixed: inst.stableAudio && 'installed', size: f.sizes.stableAudio, title: t('pick.stableAudio'), text: t('pick.stableAudio.text') })}
+        ${pickRow({ id: 'stableAudio', checked: sel.stableAudio, fixed: inst.stableAudio && 'installed', size: f.sizes.stableAudio, title: t('pick.stableAudio'), text: t('pick.stableAudio.text'), children: sa3Block() })}
         ${pickRow({ id: 'assistant', checked: sel.assistant, fixed: inst.assistant && 'installed', size: f.sizes.assistant, title: t('pick.assistant'), text: t('pick.assistant.text') })}
         ${pickRow({ id: 'aceBase', checked: sel.aceBase, fixed: inst.aceBase && 'installed', size: f.sizes.aceBase, title: t('pick.aceBase'), text: t('pick.aceBase.text') })}
         ${pickRow({ id: 'aceXl', checked: sel.aceXl, fixed: inst.aceXl && 'installed', size: f.sizes.aceXl, title: t('pick.aceXl'), text: t('pick.aceXl.text'), children: xlWarning() })}
       </ul>
       <p class="note">${esc(t('pick.later'))}</p>
     </section>`;
+  }
+
+  // ---------- Stable Audio 3 checkpoints and the Hugging Face token they need ----------
+  let hf = null;      // the last token check: { ok, user, denied, checked } or { code } (empty, login, network)
+  let hfDraft = '';   // what is typed in the token field, kept across re-renders until a check takes it
+  let hfBusy = false;
+
+  /** Checkpoints picked that are not on disk yet: all three are gated, so they need a token with access. */
+  const sa3ToFetch = () => {
+    const f = ctx.features;
+    return f.selection.stableAudio ? f.selection.sa3Models.filter((m) => !f.installed.sa3Models.includes(m)) : [];
+  };
+  const hfReady = () => {
+    const need = sa3ToFetch();
+    return need.length === 0 || !!(hf && hf.ok && need.every((m) => hf.checked.includes(m)));
+  };
+
+  function sa3Block() {
+    const f = ctx.features;
+    const sel = f.selection;
+    const models = f.sa3Models.map((m) => {
+      const has = f.installed.sa3Models.includes(m);
+      return `<label class="prec${has ? ' fixed' : ''}"><input type="checkbox" data-sa3="${m}"${sel.sa3Models.includes(m) ? ' checked' : ''}${has || !sel.stableAudio ? ' disabled' : ''}>
+        <span><b>${esc(m)}</b> ${esc(has ? t('pick.installed') : fmtBytes(f.sizes.sa3Models[m]))}<br><span class="text">${esc(t('pick.sa3.' + m))}</span></span></label>`;
+    }).join('');
+    return `<div class="precs" role="group" aria-label="${esc(t('pick.sa3'))}"><span class="lbl">${esc(t('pick.sa3'))}</span>${models}</div>${sa3ToFetch().length ? hfBlock() : ''}`;
+  }
+
+  function hfBlock() {
+    const pages = sa3ToFetch().map((m) => `<button type="button" class="btn link" data-open="hf-${m}">${esc(m)}</button>`).join(', ');
+    let status = '';
+    if (hfBusy) status = t(hfBusy === 'browser' ? 'hf.waiting' : 'hf.checking');
+    else if (hf) {
+      status = hf.code ? t('hf.' + hf.code)
+        : hf.denied.length ? t('hf.denied', { user: hf.user, models: hf.denied.join(', ') })
+        : hfReady() ? t('hf.ok', { user: hf.user })
+        : t('hf.recheck'); // another checkpoint was ticked after the check
+    }
+    const tone = hfBusy || !hf ? '' : hfReady() ? ' ok' : ' bad';
+    return `<div class="hf">
+      <p class="text">${esc(t('hf.lead'))}</p>
+      <ol class="hfsteps"><li>${esc(t('hf.step1'))} ${pages}</li><li>${esc(t('hf.step2'))}</li></ol>
+      <div class="hfrow"><button type="button" class="btn" id="hf-signin"${hfBusy === 'token' ? ' disabled' : ''}>${esc(t('hf.signin'))}</button></div>
+      <div class="hfrow">
+        <label for="hf-token" class="lbl">${esc(t('hf.token'))} <button type="button" class="btn link" data-open="hf-token">${esc(t('hf.newToken'))}</button></label>
+        <input type="password" id="hf-token" autocomplete="off" spellcheck="false" placeholder="${esc(ctx.features.hfTokenSaved ? t('hf.savedPh') : 'hf_…')}" value="${esc(hfDraft)}">
+        <button type="button" class="btn" id="hf-check"${hfBusy ? ' disabled' : ''}>${esc(t('hf.check'))}</button>
+      </div>
+      <p class="hfstatus${tone}" role="status">${esc(status)}</p>
+      <p class="text">${esc(t('hf.where'))}</p>
+    </div>`;
+  }
+
+  /** Either way to a token: 'token' checks the one typed (or saved), 'browser' signs in on Hugging Face. */
+  let hfRun = 0;
+  async function onHf(mode) {
+    if (hfBusy === 'token' || (hfBusy && mode === 'token')) return;
+    const run = ++hfRun;
+    hfBusy = mode;
+    showCheckResult();
+    let result;
+    try {
+      result = mode === 'browser' ? await api.signInHf(sa3ToFetch()) : await api.checkHfToken(hfDraft, sa3ToFetch());
+    } finally {
+      if (run === hfRun) hfBusy = false;
+    }
+    // a second click on sign-in replaced this one: its result is not the latest
+    if (run !== hfRun || result.code === 'aborted') return;
+    hf = result;
+    // a token Hugging Face accepted is kept by the app (and saved into the folder at the start), not in the page
+    if (hf.user) { hfDraft = ''; ctx = await api.context(); }
+    showCheckResult();
+    const again = $(mode === 'browser' ? '#hf-signin' : '#hf-check');
+    if (again) again.focus();
   }
 
   /**
@@ -163,15 +237,19 @@
   /** A change of parts: save it, get the new plan and sizes, re-render keeping the focus on the same box. */
   async function onPick(ev) {
     const el = ev.target;
-    if (!(el instanceof HTMLInputElement)) return;
-    const sel = { ...ctx.features.selection, yue2Precisions: [...ctx.features.selection.yue2Precisions] };
+    // the token field changes too; only the boxes are picks
+    if (!(el instanceof HTMLInputElement) || !(el.dataset.pick || el.dataset.prec || el.dataset.sa3)) return;
+    const sel = { ...ctx.features.selection, yue2Precisions: [...ctx.features.selection.yue2Precisions], sa3Models: [...ctx.features.selection.sa3Models] };
     if (el.dataset.pick) sel[el.dataset.pick] = el.checked;
+    // Stable Audio 3 ticked: its usual checkpoints with it, unless some are there already
+    if (el.dataset.pick === 'stableAudio' && el.checked && sel.sa3Models.length === 0) sel.sa3Models = [...ctx.features.sa3Defaults];
     if (el.dataset.prec) {
       sel.yue2Precisions = el.checked ? [...sel.yue2Precisions, el.dataset.prec] : sel.yue2Precisions.filter((p) => p !== el.dataset.prec);
       // YuE2 needs one precision at least: unticking the last one keeps it
       if (sel.yue2Precisions.length === 0) { el.checked = true; return; }
     }
-    const focusId = el.dataset.pick ? `[data-pick="${el.dataset.pick}"]` : `[data-prec="${el.dataset.prec}"]`;
+    if (el.dataset.sa3) sel.sa3Models = el.checked ? [...sel.sa3Models, el.dataset.sa3] : sel.sa3Models.filter((m) => m !== el.dataset.sa3);
+    const focusId = el.dataset.pick ? `[data-pick="${el.dataset.pick}"]` : el.dataset.prec ? `[data-prec="${el.dataset.prec}"]` : `[data-sa3="${el.dataset.sa3}"]`;
     await api.setFeatures(sel);
     ctx = await api.context();
     showCheckResult();
@@ -190,13 +268,22 @@
       ${adding ? '' : folderBlock()}
       <p class="note">${esc(nothing ? t('pick.nothing') : t(adding ? 'add.note' : 'check.note', { size: fmtBytes(pendingBytes()) }))}</p>
       ${diskOk() ? '' : `<p class="note bad" role="alert">${esc(t('pick.noDisk', { need: fmtBytes(ctx.neededBytes) }))}</p>`}
+      ${hfReady() ? '' : `<p class="note bad">${esc(t('hf.needed'))}</p>`}
       <div class="actions">
-        <button type="button" class="btn primary" id="start"${diskOk() && !(adding && nothing) ? '' : ' disabled'}>${esc(t(adding ? 'btn.add' : 'btn.start'))}</button>
+        <button type="button" class="btn primary" id="start"${diskOk() && hfReady() && !(adding && nothing) ? '' : ' disabled'}>${esc(t(adding ? 'btn.add' : 'btn.start'))}</button>
         ${adding ? `<button type="button" class="btn" id="back">${esc(t('btn.back'))}</button>` : ''}
       </div>`, title);
     bind('#start', startDownload);
     bind('#change', chooseFolder);
     bind('#back', () => api.launch());
+    bind('#hf-check', () => onHf('token'));
+    bind('#hf-signin', () => onHf('browser'));
+    for (const b of view.querySelectorAll('[data-open]')) b.addEventListener('click', () => api.openExternal(b.dataset.open));
+    const token = $('#hf-token');
+    if (token) {
+      token.addEventListener('input', () => { hfDraft = token.value; });
+      token.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); onHf('token'); } });
+    }
     const box = $('.pickbox');
     if (box) box.addEventListener('change', onPick);
   }

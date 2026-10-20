@@ -24,14 +24,14 @@ const sleep = (ms, signal) =>
  * first dropped connection, and on a slow line one drop can end a 10 GB step (issue #39). They skip
  * what they already have, so a retry continues where the last try stopped. An abort is not retried.
  */
-async function withRetries(run, { signal, attempts = 3, backoffMs = 5000, onRetry = () => {} } = {}) {
+async function withRetries(run, { signal, attempts = 3, backoffMs = 5000, onRetry = () => {}, shouldRetry = () => true } = {}) {
   for (let i = 1; ; i++) {
     signal?.throwIfAborted();
     try {
       return await run();
     } catch (err) {
       if (signal?.aborted) throw signal.reason ?? err;
-      if (i >= attempts) throw err;
+      if (i >= attempts || !shouldRetry(err)) throw err;
       onRetry(i + 1, attempts, err);
       await sleep(backoffMs * i, signal);
     }

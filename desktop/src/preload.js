@@ -14,6 +14,10 @@ contextBridge.exposeInMainWorld('remiqora', {
   openLogs: () => ipcRenderer.invoke('setup:open-logs'),
   showData: () => ipcRenderer.invoke('setup:show-data'),
   setFeatures: (picked) => ipcRenderer.invoke('setup:set-features', picked),
+  // a Hugging Face token for the Stable Audio 3 checkpoints: '' checks the one saved in the chosen folder
+  checkHfToken: (token, models) => ipcRenderer.invoke('setup:hf-check', token, models),
+  // or sign in to Hugging Face in the browser, which hands the app a token
+  signInHf: (models) => ipcRenderer.invoke('setup:hf-signin', models),
   // For the app itself (the same window shows it): what is installed, and adding a part left out at install.
   installed: () => ipcRenderer.invoke('app:features'),
   addFeatures: (ids) => ipcRenderer.invoke('app:add-features', ids),

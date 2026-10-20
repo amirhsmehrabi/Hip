@@ -8,7 +8,7 @@ const { extract, extractAtomic } = require('./extract');
 const { applyGitPatch } = require('./patch');
 const { runCommand, cleanEnv } = require('../proc');
 const { IS_WINDOWS } = require('../paths');
-const { PRECISIONS, weightPackages, excludedComponents } = require('./features');
+const { PRECISIONS, weightPackages, excludedComponents, sa3ModelInstalled, sa3Bytes } = require('./features');
 
 const exists = (p) => fsp.access(p).then(() => true, () => false);
 const sum = (list) => list.reduce((a, b) => a + b, 0);
@@ -326,8 +326,63 @@ function buildComponents({ L, manifest, platform, resources, selection }) {
         retrying(ctx, report, () => runCommand(L.uvBin, ['sync'], { cwd: dest, env: uvEnv(L), onLine: (line) => report({ note: line }), signal: ctx.signal, logFile })));
     },
   });
-  // Stable Audio 3: the weights are gated on Hugging Face, the app's Models page downloads them.
+  // Stable Audio 3: its server here, the checkpoints in the next step.
   const stableAudio = bundledUvProject({ id: 'stable-audio', weight: manifest.stableAudio.approxBytes, src: resources.sa3Server, dest: L.stableAudio, pkg: 'sa3_server', label: 'Stable Audio 3 server' });
+
+  // The Stable Audio 3 checkpoints picked on the first-run screen, which checked the token and saved it where
+  // huggingface_hub looks (HF_HOME/token). sa3-server's own downloader fetches them, as the app's Models page does;
+  // it prints JSON lines (progress {done, total}, error {code, message}). A refused token or licence is said as such
+  // and not retried, a network error is.
+  const sa3Picked = sel.stableAudio ? sel.sa3Models || [] : [];
+  const sa3Python = path.join(L.stableAudio, '.venv', IS_WINDOWS ? 'Scripts' : 'bin', IS_WINDOWS ? 'python.exe' : 'python');
+  const downloadSa3 = async (ctx, model, onBytes) => {
+    let failure = null;
+    try {
+      await runCommand(sa3Python, ['-m', 'sa3_server.download', model, '--json'], {
+        cwd: L.stableAudio, env: uvEnv(L), signal: ctx.signal, logFile,
+        onLine: (line) => {
+          let ev;
+          try { ev = JSON.parse(line); } catch { return; }
+          if (ev.event === 'progress') onBytes(ev.done);
+          if (ev.event === 'error') failure = ev;
+        },
+      });
+    } catch (err) {
+      if (!failure) throw err;
+      const repo = manifest.stableAudio.models[model].repo;
+      const why = {
+        login: `Hugging Face did not accept the token for ${repo}. Make a token with the Read role at https://huggingface.co/settings/tokens and enter it on the first screen of the setup (restart the app to get there).`,
+        access: `The licence of ${repo} is not accepted yet. Open https://huggingface.co/${repo} while signed in, press "Agree and access repository", then Retry.`,
+      }[failure.code] || `${repo}: ${failure.message}`;
+      const e = new Error(why);
+      e.code = failure.code;
+      throw e;
+    }
+  };
+  const sa3Models = {
+    id: 'sa3-models',
+    weight: sa3Bytes(manifest, sa3Picked),
+    // the picked list: adding a checkpoint later runs the step again, and it skips what is there
+    version: sa3Picked.join('+'),
+    verify: () => sa3Picked.every((m) => sa3ModelInstalled(L, manifest, m)),
+    async install(ctx, report) {
+      const total = sa3Bytes(manifest, sa3Picked);
+      let base = 0;
+      for (const model of sa3Picked) {
+        const bytes = manifest.stableAudio.models[model].bytes;
+        if (!sa3ModelInstalled(L, manifest, model)) {
+          report({ note: manifest.stableAudio.models[model].repo, done: base, total });
+          await withRetries(() => downloadSa3(ctx, model, (done) => report({ done: base + Math.min(done, bytes), total })), {
+            signal: ctx.signal,
+            shouldRetry: (err) => err.code !== 'login' && err.code !== 'access',
+            onRetry: (n, of) => report({ note: `connection lost, trying again (${n}/${of})` }),
+          });
+        }
+        base += bytes;
+        report({ done: base, total });
+      }
+    },
+  };
   // The prompt assistant: its language model comes from the Models page too.
   const promptAssistant = bundledUvProject({ id: 'prompt-assistant', weight: manifest.promptAssistant.approxBytes, src: resources.promptAssistant, dest: L.promptAssistant, pkg: 'prompt_assistant', label: 'prompt assistant' });
 
@@ -361,7 +416,7 @@ function buildComponents({ L, manifest, platform, resources, selection }) {
 
   // Order matters: the backend venv provides the Python that runs the weights downloader.
   const left = new Set(excludedComponents(sel));
-  return [uv, ffmpeg, engineStep, backendEnv, aceStep, aceModels, aceBaseModel, aceXlModel, demucs, stableAudio, promptAssistant, weights].filter((c) => !left.has(c.id));
+  return [uv, ffmpeg, engineStep, backendEnv, aceStep, aceModels, aceBaseModel, aceXlModel, demucs, stableAudio, sa3Models, promptAssistant, weights].filter((c) => !left.has(c.id));
 }
 
 /** Path of ffmpeg: a pinned build under tools/ffmpeg where there is one, otherwise whatever the system has. */
