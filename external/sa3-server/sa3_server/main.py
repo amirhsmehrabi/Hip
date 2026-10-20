@@ -219,8 +219,14 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--preload", default="medium", help="model to warm up at start (empty to skip)")
     parser.add_argument("--max-resident", type=int, default=1, help="how many checkpoints may stay in memory")
     parser.add_argument("--out-dir", default=os.getenv("SA3_OUT_DIR") or "output", help="where generated WAVs go")
+    parser.add_argument("--threads", type=int, default=int(os.getenv("SA3_THREADS") or 0),
+                        help="CPU threads for PyTorch (0 = its default, one per physical core)")
     parser.add_argument("--log-level", default="info")
     args = parser.parse_args(argv)
+    if args.threads > 0:
+        import torch
+
+        torch.set_num_threads(args.threads)
 
     logging.basicConfig(level=args.log_level.upper(), format="%(asctime)s %(name)s %(levelname)s %(message)s")
     engine = Engine(Path(args.out_dir), device=args.device, max_resident=args.max_resident)
