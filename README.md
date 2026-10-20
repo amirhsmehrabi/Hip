@@ -34,6 +34,7 @@
   <a href="#from-an-idea">From an idea</a> ·
   <a href="#ace-step-generation">ACE-Step</a> ·
   <a href="#yue2-and-sheetsage2-generation">YuE2</a> ·
+  <a href="#stable-audio-3-generation">Stable Audio 3</a> ·
   <a href="#lora-training-ace-step">LoRA</a> ·
   <a href="#built-in-daw">DAW</a> ·
   <a href="#ai-arranger">AI arranger</a> ·
@@ -82,11 +83,13 @@ The interface is fully bilingual (Russian/English). It starts in your system lan
 
 ## From an idea
 
+![From an idea: the idea, the engine and the prompt the assistant wrote for ACE-Step](docs/screenshots/en/01-idea.png)
+
 The first tab in the header. Describe a song or an instrumental in your own words, pick an engine, and a local language model, the prompt assistant, writes the prompt in that engine's own format:
 
 - **ACE-Step**: a style caption, lyrics, tempo, key and length. While the engine runs, ACE-Step's own language model can write it instead: faster, but it strays further from the idea.
-- **YuE2** (songs): 5–9 style tags in English and lyrics split into sections, in the language of the idea or the one you pick.
-- **Stable Audio 3** (instrumentals): a prompt in its own tag style, written with Stable Audio's own instructions.
+- **YuE2** (songs): the song's language as the first tag (`Russian`, `English`...), then 5–9 style tags in English, and lyrics split into sections, in the language of the idea or the one you pick.
+- **Stable Audio 3** (instrumentals and sounds): Stable Audio's own classifier first decides whether the idea is music or a sound ("rain on a window" is a sound, not a song), then the prompt is written with its instructions for that kind; a *Music / Sound* switch fixes a wrong guess, and a sound gets the `small-sfx` checkpoint when it is downloaded.
 
 While the prompt is written, the page shows the stage, an estimated percent, the text as it grows and a *Stop* button. The prompt then opens as editable fields. *Generate* starts the engine if needed and sends the job; the track is named after the idea and lands in the engine's feed. *Open in the form* puts the prompt into the engine's own page for the settings this page leaves out, and the form takes it as soon as the engine has started. The idea and the prompt stay when you leave the page and after a reload.
 
@@ -116,6 +119,12 @@ Plus: 10–300 s duration, batch of 1/2/4 variants, mp3/wav/flac formats, advanc
 Three **CoT (Chain-of-Thought)** modes: `off` — straight to audio; `melody` — the arrangement is built around a given melody (ABC); `full` — the model first builds a symbolic plan (melody + chords), then generates the audio.
 
 **SheetSage2** lets you upload a reference track and pull its melody into ABC notation, right in the form, with one click — editable by hand afterwards. Beyond that: `q8_0`/`q4_0` precision, batch of 1–4, a full set of sampling parameters for audio generation and the ABC planner separately, local presets, and viewing/reusing the ABC score of an already-generated track.
+
+## Stable Audio 3: generation
+
+![Stable Audio 3: a description, the length and model, and a feed of instrumentals and sounds](docs/screenshots/en/15-stable-audio.png)
+
+Instrumentals and sound effects from a description, in seconds; no vocals. Pick **Music** or **Sound**, describe it in English (genre, instruments, mood and tempo; for a sound its source, how it happens and the room), set the length (up to 6 minutes on `medium`, 2 on the small checkpoints) and 1, 2 or 4 variants. A **reference track** turns the same form into a cover (audio-to-audio with a closeness slider), a repaint of one or more ranges, or a continuation. Six checkpoints are downloaded from the Models page; the page says how many are there. More on the page's options under [Samples](#samples).
 
 ## LoRA training (ACE-Step)
 
