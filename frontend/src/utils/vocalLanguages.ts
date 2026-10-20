@@ -74,3 +74,21 @@ export function guessVocalLanguage(lyrics: string): string {
 export function vocalLanguageLabel(code: string): string {
   return VOCAL_LANGUAGES.find((l) => l.code === code)?.label ?? code
 }
+
+/** A language's English name, as a style tag takes it: 'ru' is "Russian", 'yue' is "Cantonese". */
+export function englishLanguageName(code: string): string {
+  try {
+    return new Intl.DisplayNames(['en'], { type: 'language' }).of(code) ?? code
+  } catch {
+    return code
+  }
+}
+
+/** Style tags with the language first: YuE2 sings in it more surely when the tags say it. Any other place it held
+ *  in the tags is dropped, so it is never there twice. */
+export function withLanguageTag(tags: string, language: string): string {
+  const lang = language.trim()
+  if (!lang) return tags.trim()
+  const rest = tags.split(',').map((s) => s.trim()).filter((s) => s && s.toLowerCase() !== lang.toLowerCase())
+  return [lang, ...rest].join(', ')
+}

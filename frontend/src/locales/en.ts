@@ -1608,7 +1608,7 @@ export default {
     sa3Max: 'up to {max} s',
     needLyrics: 'YuE2 needs the lyrics.',
     styleTags: 'Style tags',
-    styleTagsHint: '5–9 comma separated tags in English: genre and mood first, then vocal, instruments, production, tempo.',
+    styleTagsHint: '5–9 comma separated tags in English: the song language first, then genre, mood, vocal, instruments, production, tempo.',
     precision: 'YuE2 precision',
     yue2Length: 'With YuE2 the lyrics set the length, and the tempo is a style tag.',
     guide: {
@@ -1628,7 +1628,7 @@ export default {
       kindHeader: 'What it makes',
       engines: [
         { engine: 'ACE-Step 1.5', what: 'A style caption, lyrics in sections, tempo, key and length', kind: 'Songs and instrumentals, fast; 1, 2 or 4 variants' },
-        { engine: 'YuE2-3B', what: '5–9 style tags in English and lyrics in sections [Verse], [Chorus], [Bridge], [Outro]', kind: 'Songs with vocals only; the lyrics set the length' },
+        { engine: 'YuE2-3B', what: 'The song language as the first tag, 5–9 style tags in English and lyrics in sections [Verse], [Chorus], [Bridge], [Outro]', kind: 'Songs with vocals only; the lyrics set the length' },
         { engine: 'Stable Audio 3', what: 'A prompt in the style the model was trained on, with the length at the end; Stable Audio\'s classifier decides whether it is music or a sound', kind: 'Instrumentals and sounds (rain, a hit, footsteps), no vocals; up to 380 s with medium, 120 s with small-music and small-sfx' },
       ],
       writerTitle: 'Who writes the prompt',
