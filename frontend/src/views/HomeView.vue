@@ -11,6 +11,7 @@ import type { ProjectSummary } from '../api/projects'
 import type { SavedTrack } from '../api/tracks'
 import type { ModelId, ModelRuntimeStatus } from '../types'
 import WaveformPlayer from '../components/shared/WaveformPlayer.vue'
+import SparklesIcon from '../components/shared/icons/SparklesIcon.vue'
 
 const orchestrator = useOrchestratorStore()
 const { selectModel } = useModelSwitch()
@@ -77,6 +78,21 @@ async function onPick(id: ModelId) {
   <div class="mx-auto max-w-3xl py-8">
     <h1 class="text-center text-2xl font-semibold text-text">{{ t('home.title') }}</h1>
     <p class="mt-2 text-center text-sm text-text-dim">{{ t('home.subtitle') }}</p>
+
+    <!-- the simplest way in: an idea in words, the prompt is written for the engine -->
+    <router-link
+      to="/idea"
+      class="group mt-6 flex items-center gap-4 rounded-xl border border-accent1/40 bg-gradient-to-r from-accent1/15 to-accent2/10 p-5 transition-colors hover:border-accent1/70"
+    >
+      <span class="accent-gradient flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white">
+        <SparklesIcon class="h-5 w-5" />
+      </span>
+      <span class="min-w-0 flex-1">
+        <span class="block text-lg font-semibold text-text">{{ t('home.idea.title') }}</span>
+        <span class="mt-0.5 block text-sm text-text-dim">{{ t('home.idea.text') }}</span>
+      </span>
+      <span class="hidden shrink-0 text-sm font-medium text-accent1 transition-transform group-hover:translate-x-0.5 sm:inline">{{ t('home.idea.go') }} →</span>
+    </router-link>
 
     <div class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <button
