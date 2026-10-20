@@ -26,7 +26,7 @@ import { useYue2Store } from '../../stores/yue2'
 import { useIdeaStore } from '../../stores/idea'
 import type { IdeaDraft as Draft, IdeaEngine as Engine, IdeaWriter as Writer } from '../../stores/idea'
 import { useStableAudioStore } from '../../stores/stableAudio'
-import { guessVocalLanguage, VOCAL_LANGUAGES } from '../../utils/vocalLanguages'
+import { englishLanguageName, guessVocalLanguage, VOCAL_LANGUAGES, withLanguageTag } from '../../utils/vocalLanguages'
 import ChipGroup from '../../components/shared/ChipGroup.vue'
 import PromptProgress from '../../components/shared/PromptProgress.vue'
 import HelpIconButton from '../../components/shared/HelpIconButton.vue'
@@ -167,7 +167,12 @@ async function write() {
       }
     } else if (engine.value === 'yue2') {
       const f = await byAssistant('yue2-song', { language: effectiveLanguage.value })
-      draft.value = { ...base, engine: 'yue2', caption: String(f.style ?? ''), lyrics: String(f.lyrics ?? ''), writtenBy: 'assistant', seconds: seconds() }
+      // the language opens the tags: the one the assistant wrote the lyrics in, else the one asked for
+      const lang = typeof f.language === 'string' && f.language ? f.language : englishLanguageName(effectiveLanguage.value)
+      draft.value = {
+        ...base, engine: 'yue2', caption: withLanguageTag(String(f.style ?? ''), lang), lyrics: String(f.lyrics ?? ''),
+        writtenBy: 'assistant', seconds: seconds(),
+      }
     } else if (writer.value === 'ace') {
       const s = await aceApi.createSample(text, instrumental.value, instrumental.value ? undefined : effectiveLanguage.value)
       draft.value = {
