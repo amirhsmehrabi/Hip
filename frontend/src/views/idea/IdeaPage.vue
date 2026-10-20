@@ -350,42 +350,56 @@ const guideOpen = ref(false)
         @keydown.ctrl.enter="write"
       ></textarea>
 
-      <!-- the engine -->
-      <div class="mt-3 flex flex-wrap items-center gap-x-2 gap-y-2" role="radiogroup" :aria-label="t('idea.engine')">
-        <span class="mr-1 text-xs text-text-dim">{{ t('idea.engine') }}</span>
-        <button
-          v-for="e in ENGINES"
-          :key="e.id"
-          type="button"
-          role="radio"
-          :aria-checked="engine === e.id"
-          :disabled="!engineAvailable(e.id)"
-          :title="!engineAvailable(e.id) ? unavailableReason(e.id) : t(`idea.engineHint.${e.id}`)"
-          class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-          :class="engine === e.id ? 'border-accent1/50 bg-accent1/10 text-text' : 'border-border text-text-dim hover:border-text-dim hover:text-text'"
-          @click="engine = e.id"
-        >
-          <component :is="e.icon" class="h-4 w-4" :class="engine === e.id && 'text-accent1'" />{{ MODEL_LABELS[e.model] }}
-          <span class="h-1.5 w-1.5 rounded-full" :class="engineRunning(e.id) ? 'bg-status-done' : 'bg-text-dim/50'"></span>
-        </button>
-        <button
-          v-if="(idea.trim() || draft) && !writing"
-          type="button"
-          class="ml-auto rounded-lg border border-border px-3 py-2 text-sm text-text-dim hover:border-text-dim hover:text-text"
-          :title="t('idea.resetTitle')"
-          @click="ideaStore.reset()"
-        >
-          {{ t('idea.reset') }}
-        </button>
-        <button
-          type="button"
-          class="accent-gradient inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-          :class="(idea.trim() || draft) && !writing ? '' : 'ml-auto'"
-          :disabled="writing || !idea.trim() || !writer"
-          @click="write"
-        >
-          <SparklesIcon class="h-4 w-4" />{{ t(writing ? 'idea.writing' : draft ? 'idea.rewrite' : 'idea.write') }}
-        </button>
+      <!-- the engine, and the actions in a block of their own: both buttons always there and always as wide, so
+           nothing shifts while typing, writing or after a reset -->
+      <div class="mt-3 flex flex-wrap items-center gap-x-2 gap-y-2">
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-2" role="radiogroup" :aria-label="t('idea.engine')">
+          <span class="mr-1 text-xs text-text-dim">{{ t('idea.engine') }}</span>
+          <button
+            v-for="e in ENGINES"
+            :key="e.id"
+            type="button"
+            role="radio"
+            :aria-checked="engine === e.id"
+            :disabled="!engineAvailable(e.id)"
+            :title="!engineAvailable(e.id) ? unavailableReason(e.id) : t(`idea.engineHint.${e.id}`)"
+            class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+            :class="engine === e.id ? 'border-accent1/50 bg-accent1/10 text-text' : 'border-border text-text-dim hover:border-text-dim hover:text-text'"
+            @click="engine = e.id"
+          >
+            <component :is="e.icon" class="h-4 w-4" :class="engine === e.id && 'text-accent1'" />{{ MODEL_LABELS[e.model] }}
+            <span class="h-1.5 w-1.5 rounded-full" :class="engineRunning(e.id) ? 'bg-status-done' : 'bg-text-dim/50'"></span>
+          </button>
+        </div>
+        <div class="ml-auto flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            class="rounded-lg border border-border px-3 py-2 text-sm text-text-dim transition-colors hover:border-text-dim hover:text-text disabled:pointer-events-none disabled:opacity-40"
+            :title="t('idea.resetTitle')"
+            :disabled="writing || (!idea.trim() && !draft)"
+            @click="ideaStore.reset()"
+          >
+            {{ t('idea.reset') }}
+          </button>
+          <button
+            type="button"
+            class="accent-gradient inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            :disabled="writing || !idea.trim() || !writer"
+            @click="write"
+          >
+            <SparklesIcon class="h-4 w-4" />
+            <!-- the three labels in one cell: the button keeps the width of the longest -->
+            <span class="grid">
+              <span
+                v-for="k in ['idea.write', 'idea.rewrite', 'idea.writing']"
+                :key="k"
+                class="col-start-1 row-start-1 text-center"
+                :class="k === (writing ? 'idea.writing' : draft ? 'idea.rewrite' : 'idea.write') ? '' : 'invisible'"
+                :aria-hidden="k === (writing ? 'idea.writing' : draft ? 'idea.rewrite' : 'idea.write') ? undefined : 'true'"
+              >{{ t(k) }}</span>
+            </span>
+          </button>
+        </div>
       </div>
       <p class="mt-1.5 text-[11px] text-text-dim">{{ t(`idea.engineHint.${engine}`) }}</p>
       <div v-if="engine === 'ace' && (assistantReady || aceRunning)" class="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-dim">
