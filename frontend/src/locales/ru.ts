@@ -1,6 +1,7 @@
 export default {
   common: {
     help: 'Помощь',
+    helpPickExample: 'Нажмите на пример, чтобы вставить его в поле.',
     save: 'Сохранить',
     undo: 'Отмена',
     redo: 'Повтор',
@@ -1399,7 +1400,6 @@ export default {
         'Получилось не то? Поменяйте одно-два слова или просто сгенерируйте ещё раз: каждый запуск идёт с новыми случайными зёрнами.',
       ],
       examplesTitle: 'Примеры партий',
-      useExample: 'Нажмите на пример, чтобы подставить его в описание.',
       examples: [
         { track: 'drums', text: 'tight house drums, four-on-the-floor kick, crisp offbeat hi-hats, clap on 2 and 4' },
         { track: 'bass', text: 'warm analog bass, syncopated 16th notes, low register, punchy' },

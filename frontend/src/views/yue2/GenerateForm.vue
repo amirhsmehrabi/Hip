@@ -9,6 +9,11 @@ import ChipGroup from '../../components/shared/ChipGroup.vue'
 import CollapsibleDetails from '../../components/shared/CollapsibleDetails.vue'
 import HelpModal from '../../components/shared/HelpModal.vue'
 import HelpIconButton from '../../components/shared/HelpIconButton.vue'
+import HelpBody from '../../components/shared/help/HelpBody.vue'
+import HelpSection from '../../components/shared/help/HelpSection.vue'
+import HelpList from '../../components/shared/help/HelpList.vue'
+import HelpTable from '../../components/shared/help/HelpTable.vue'
+import HelpExamples from '../../components/shared/help/HelpExamples.vue'
 import TagInput from '../../components/shared/TagInput.vue'
 
 const store = useYue2Store()
@@ -138,6 +143,21 @@ const abcSampling = reactive<Record<string, number | null>>({
 const submitting = ref(false)
 const formError = ref('')
 const helpOpen = ref<null | 'style' | 'lyrics' | 'cot' | 'advanced'>(null)
+const helpStyleExamples = computed(() => (tm('yueGen.help.style.examples') as string[]).map((text) => ({ text })))
+/** An example from the help goes into its field, and the help closes. */
+function useStyleExample(i: number) {
+  style.value = (tm('yueGen.help.style.examples') as string[])[i] ?? style.value
+  helpOpen.value = null
+}
+function useLyricsExample() {
+  lyrics.value = t('yueGen.help.lyrics.example')
+  helpOpen.value = null
+}
+/** The CoT modes with what each is for, as rows of the help's table. */
+const cotHelpRows = computed(() => (['off', 'melody', 'full'] as const).map((mode) => ({
+  mode,
+  when: `${COT_HINTS.value[mode]} ${t(`yueGen.help.cot.${mode}Note`)}`,
+})))
 
 const COT_OPTIONS: { value: CotMode; label: string }[] = [
   { value: 'off', label: 'off' },
@@ -514,89 +534,50 @@ async function submit() {
       </CollapsibleDetails>
     </div>
 
-    <HelpModal :open="helpOpen === 'style'" :title="t('yueGen.help.style.title')" @close="helpOpen = null">
-      <p>{{ t('yueGen.help.style.intro') }}</p>
-      <table class="w-full border-collapse text-xs">
-        <thead>
-          <tr class="border-b border-border text-left text-text">
-            <th class="py-1 pr-2">{{ t('yueGen.help.style.dimHeader') }}</th>
-            <th class="py-1">{{ t('yueGen.help.style.examplesHeader') }}</th>
-          </tr>
-        </thead>
-        <tbody class="align-top">
-          <tr v-for="row in (tm('yueGen.help.style.rows') as { dim: string; examples: string }[])" :key="row.dim" class="border-b border-border/60">
-            <td class="py-1.5 pr-2 font-medium text-text">{{ row.dim }}</td>
-            <td class="py-1.5">{{ row.examples }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p class="font-medium text-text">{{ t('yueGen.help.style.tipsTitle') }}</p>
-      <ul class="list-disc space-y-1 pl-4">
-        <li v-for="tip in (tm('yueGen.help.style.tips') as string[])" :key="tip">{{ tip }}</li>
-      </ul>
-      <p class="font-medium text-text">{{ t('yueGen.help.style.examplesTitle') }}</p>
-      <p v-for="ex in (tm('yueGen.help.style.examples') as string[])" :key="ex" class="rounded bg-panel-2 p-2 font-mono text-xs">{{ ex }}</p>
+    <!-- The help windows, in the editor guide's look (HelpBody, HelpSection, HelpTable) -->
+    <HelpModal :open="helpOpen === 'style'" :title="t('yueGen.help.style.title')" wide @close="helpOpen = null">
+      <HelpBody :lead="t('yueGen.help.style.intro')">
+        <HelpTable
+          :columns="[{ key: 'dim', label: t('yueGen.help.style.dimHeader'), nowrap: true }, { key: 'examples', label: t('yueGen.help.style.examplesHeader') }]"
+          :rows="tm('yueGen.help.style.rows') as { dim: string; examples: string }[]"
+        />
+        <HelpSection :title="t('yueGen.help.style.tipsTitle')" tone="tips">
+          <HelpList :items="tm('yueGen.help.style.tips') as string[]" />
+        </HelpSection>
+        <HelpSection :title="t('yueGen.help.style.examplesTitle')">
+          <HelpExamples :items="helpStyleExamples" mono pickable @pick="useStyleExample" />
+        </HelpSection>
+      </HelpBody>
     </HelpModal>
-    <HelpModal :open="helpOpen === 'lyrics'" :title="t('yueGen.help.lyrics.title')" @close="helpOpen = null">
-      <p>{{ t('yueGen.help.lyrics.intro') }}</p>
-      <table class="w-full border-collapse text-xs">
-        <thead>
-          <tr class="border-b border-border text-left text-text">
-            <th class="py-1 pr-2">{{ t('yueGen.help.lyrics.tagHeader') }}</th>
-            <th class="py-1">{{ t('yueGen.help.lyrics.purposeHeader') }}</th>
-          </tr>
-        </thead>
-        <tbody class="align-top">
-          <tr v-for="row in (tm('yueGen.help.lyrics.rows') as { tag: string; purpose: string }[])" :key="row.tag" class="border-b border-border/60">
-            <td class="py-1.5 pr-2 font-mono text-text">{{ row.tag }}</td>
-            <td class="py-1.5">{{ row.purpose }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p class="font-medium text-text">{{ t('yueGen.help.lyrics.tipsTitle') }}</p>
-      <ul class="list-disc space-y-1 pl-4">
-        <li v-for="tip in (tm('yueGen.help.lyrics.tips') as string[])" :key="tip">{{ tip }}</li>
-      </ul>
-      <p class="font-medium text-text">{{ t('yueGen.help.lyrics.exampleTitle') }}</p>
-      <p class="rounded bg-panel-2 p-2 font-mono text-xs whitespace-pre-line">{{ t('yueGen.help.lyrics.example') }}</p>
+    <HelpModal :open="helpOpen === 'lyrics'" :title="t('yueGen.help.lyrics.title')" wide @close="helpOpen = null">
+      <HelpBody :lead="t('yueGen.help.lyrics.intro')">
+        <HelpTable
+          :columns="[{ key: 'tag', label: t('yueGen.help.lyrics.tagHeader'), mono: true, nowrap: true }, { key: 'purpose', label: t('yueGen.help.lyrics.purposeHeader') }]"
+          :rows="tm('yueGen.help.lyrics.rows') as { tag: string; purpose: string }[]"
+        />
+        <HelpSection :title="t('yueGen.help.lyrics.tipsTitle')" tone="tips">
+          <HelpList :items="tm('yueGen.help.lyrics.tips') as string[]" />
+        </HelpSection>
+        <HelpSection :title="t('yueGen.help.lyrics.exampleTitle')">
+          <HelpExamples :items="[{ text: t('yueGen.help.lyrics.example') }]" mono pickable @pick="useLyricsExample" />
+        </HelpSection>
+      </HelpBody>
     </HelpModal>
-    <HelpModal :open="helpOpen === 'cot'" :title="t('yueGen.help.cot.title')" @close="helpOpen = null">
-      <p>{{ t('yueGen.help.cot.intro') }}</p>
-      <table class="w-full border-collapse text-xs">
-        <thead>
-          <tr class="border-b border-border text-left text-text">
-            <th class="py-1 pr-2">{{ t('yueGen.help.cot.modeHeader') }}</th>
-            <th class="py-1">{{ t('yueGen.help.cot.whenHeader') }}</th>
-          </tr>
-        </thead>
-        <tbody class="align-top">
-          <tr class="border-b border-border/60">
-            <td class="py-1.5 pr-2 font-mono text-text">off</td>
-            <td class="py-1.5">{{ COT_HINTS.off }} {{ t('yueGen.help.cot.offNote') }}</td>
-          </tr>
-          <tr class="border-b border-border/60">
-            <td class="py-1.5 pr-2 font-mono text-text">melody</td>
-            <td class="py-1.5">{{ COT_HINTS.melody }} {{ t('yueGen.help.cot.melodyNote') }}</td>
-          </tr>
-          <tr>
-            <td class="py-1.5 pr-2 font-mono text-text">full</td>
-            <td class="py-1.5">{{ COT_HINTS.full }} {{ t('yueGen.help.cot.fullNote') }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p class="text-xs text-text-dim">{{ t('yueGen.help.cot.precisionNote') }}</p>
-
-      <p class="font-medium text-text">{{ t('yueGen.help.cot.abcTitle') }}</p>
-      <p>{{ t('yueGen.help.cot.abcIntro') }}</p>
-      <table class="w-full border-collapse text-xs">
-        <tbody class="align-top">
-          <tr v-for="row in (tm('yueGen.help.cot.abcRows') as { tag: string; purpose: string }[])" :key="row.tag" class="border-b border-border/60">
-            <td class="py-1.5 pr-2 font-mono text-text">{{ row.tag }}</td>
-            <td class="py-1.5">{{ row.purpose }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p class="text-xs text-text-dim">{{ t('yueGen.help.cot.abcFooter') }}</p>
+    <HelpModal :open="helpOpen === 'cot'" :title="t('yueGen.help.cot.title')" wide @close="helpOpen = null">
+      <HelpBody :lead="t('yueGen.help.cot.intro')">
+        <HelpTable
+          :columns="[{ key: 'mode', label: t('yueGen.help.cot.modeHeader'), mono: true }, { key: 'when', label: t('yueGen.help.cot.whenHeader') }]"
+          :rows="cotHelpRows"
+          :current="(r) => r.mode === cot"
+        />
+        <HelpSection tone="note">
+          <p>{{ t('yueGen.help.cot.precisionNote') }}</p>
+        </HelpSection>
+        <HelpSection :title="t('yueGen.help.cot.abcTitle')" :intro="t('yueGen.help.cot.abcIntro')">
+          <HelpTable :columns="[{ key: 'tag', mono: true, nowrap: true }, { key: 'purpose' }]" :rows="tm('yueGen.help.cot.abcRows') as { tag: string; purpose: string }[]" />
+          <p class="mt-2 text-xs">{{ t('yueGen.help.cot.abcFooter') }}</p>
+        </HelpSection>
+      </HelpBody>
     </HelpModal>
     <!-- Same look as the app's main help (AppHelpModal): lead, numbered cards, bordered cards, tinted tips box -->
     <HelpModal :open="helpOpen === 'advanced'" :title="t('yueGen.help.advanced.title')" wide @close="helpOpen = null">

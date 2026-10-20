@@ -10,6 +10,11 @@ import ChipGroup from '../../components/shared/ChipGroup.vue'
 import CollapsibleDetails from '../../components/shared/CollapsibleDetails.vue'
 import HelpModal from '../../components/shared/HelpModal.vue'
 import HelpIconButton from '../../components/shared/HelpIconButton.vue'
+import HelpBody from '../../components/shared/help/HelpBody.vue'
+import HelpSection from '../../components/shared/help/HelpSection.vue'
+import HelpList from '../../components/shared/help/HelpList.vue'
+import HelpTable from '../../components/shared/help/HelpTable.vue'
+import HelpExamples from '../../components/shared/help/HelpExamples.vue'
 import TagInput from '../../components/shared/TagInput.vue'
 import { guessVocalLanguage, VOCAL_LANGUAGES, vocalLanguageLabel } from '../../utils/vocalLanguages'
 
@@ -182,6 +187,16 @@ const newLoraPath = ref('')
 const submitting = ref(false)
 const formError = ref('')
 const helpOpen = ref<null | 'style' | 'lyrics' | 'remix' | 'advanced'>(null)
+const helpStyleExamples = computed(() => (tm('aceGen.help.style.examples') as string[]).map((text) => ({ text })))
+/** An example from the help goes into its field, and the help closes. */
+function useStyleExample(i: number) {
+  customPrompt.value = (tm('aceGen.help.style.examples') as string[])[i] ?? customPrompt.value
+  helpOpen.value = null
+}
+function useLyricsExample() {
+  customLyrics.value = t('aceGen.help.lyrics.example')
+  helpOpen.value = null
+}
 
 const TASK_TYPES = computed<{ value: TaskType; label: string }[]>(() => [
   { value: 'cover', label: t('aceGen.taskTypes.cover') },
@@ -611,102 +626,67 @@ async function submit() {
       </CollapsibleDetails>
     </div>
 
-    <HelpModal :open="helpOpen === 'style'" :title="t('aceGen.help.style.title')" @close="helpOpen = null">
-      <p>{{ t('aceGen.help.style.intro') }}</p>
-      <table class="w-full border-collapse text-xs">
-        <thead>
-          <tr class="border-b border-border text-left text-text">
-            <th class="py-1 pr-2">{{ t('aceGen.help.style.dimHeader') }}</th>
-            <th class="py-1">{{ t('aceGen.help.style.examplesHeader') }}</th>
-          </tr>
-        </thead>
-        <tbody class="align-top">
-          <tr v-for="row in (tm('aceGen.help.style.rows') as { dim: string; examples: string }[])" :key="row.dim" class="border-b border-border/60">
-            <td class="py-1.5 pr-2 font-medium text-text">{{ row.dim }}</td>
-            <td class="py-1.5">{{ row.examples }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p class="font-medium text-text">{{ t('aceGen.help.style.tipsTitle') }}</p>
-      <ul class="list-disc space-y-1 pl-4">
-        <li v-for="tip in (tm('aceGen.help.style.tips') as string[])" :key="tip">{{ tip }}</li>
-      </ul>
-      <p class="font-medium text-text">{{ t('aceGen.help.style.examplesTitle') }}</p>
-      <p v-for="ex in (tm('aceGen.help.style.examples') as string[])" :key="ex" class="rounded bg-panel-2 p-2 font-mono text-xs">{{ ex }}</p>
+    <!-- The help windows, in the editor guide's look (HelpBody, HelpSection, HelpTable) -->
+    <HelpModal :open="helpOpen === 'style'" :title="t('aceGen.help.style.title')" wide @close="helpOpen = null">
+      <HelpBody :lead="t('aceGen.help.style.intro')">
+        <HelpTable
+          :columns="[{ key: 'dim', label: t('aceGen.help.style.dimHeader'), nowrap: true }, { key: 'examples', label: t('aceGen.help.style.examplesHeader') }]"
+          :rows="tm('aceGen.help.style.rows') as { dim: string; examples: string }[]"
+        />
+        <HelpSection :title="t('aceGen.help.style.tipsTitle')" tone="tips">
+          <HelpList :items="tm('aceGen.help.style.tips') as string[]" />
+        </HelpSection>
+        <HelpSection :title="t('aceGen.help.style.examplesTitle')">
+          <HelpExamples :items="helpStyleExamples" mono pickable @pick="useStyleExample" />
+        </HelpSection>
+      </HelpBody>
     </HelpModal>
-    <HelpModal :open="helpOpen === 'lyrics'" :title="t('aceGen.help.lyrics.title')" @close="helpOpen = null">
-      <p>{{ t('aceGen.help.lyrics.intro') }}</p>
-      <table class="w-full border-collapse text-xs">
-        <thead>
-          <tr class="border-b border-border text-left text-text">
-            <th class="py-1 pr-2">{{ t('aceGen.help.lyrics.tagHeader') }}</th>
-            <th class="py-1">{{ t('aceGen.help.lyrics.purposeHeader') }}</th>
-          </tr>
-        </thead>
-        <tbody class="align-top">
-          <tr v-for="row in (tm('aceGen.help.lyrics.rows') as { tag: string; purpose: string }[])" :key="row.tag" class="border-b border-border/60">
-            <td class="py-1.5 pr-2 font-mono text-text">{{ row.tag }}</td>
-            <td class="py-1.5">{{ row.purpose }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p class="font-medium text-text">{{ t('aceGen.help.lyrics.marksTitle') }}</p>
-      <p>{{ t('aceGen.help.lyrics.marksIntro') }}</p>
-      <table class="w-full border-collapse text-xs">
-        <tbody class="align-top">
-          <tr v-for="mark in (tm('aceGen.help.lyrics.marks') as { tag: string; purpose: string }[])" :key="mark.tag" class="border-b border-border/60">
-            <td class="py-1.5 pr-2 font-mono text-text">{{ mark.tag }}</td>
-            <td class="py-1.5">{{ mark.purpose }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p class="font-medium text-text">{{ t('aceGen.help.lyrics.tipsTitle') }}</p>
-      <ul class="list-disc space-y-1 pl-4">
-        <li v-for="tip in (tm('aceGen.help.lyrics.tips') as string[])" :key="tip">{{ tip }}</li>
-      </ul>
-      <p class="font-medium text-text">{{ t('aceGen.help.lyrics.exampleTitle') }}</p>
-      <p class="rounded bg-panel-2 p-2 font-mono text-xs whitespace-pre-line">{{ t('aceGen.help.lyrics.example') }}</p>
+    <HelpModal :open="helpOpen === 'lyrics'" :title="t('aceGen.help.lyrics.title')" wide @close="helpOpen = null">
+      <HelpBody :lead="t('aceGen.help.lyrics.intro')">
+        <HelpTable
+          :columns="[{ key: 'tag', label: t('aceGen.help.lyrics.tagHeader'), mono: true, nowrap: true }, { key: 'purpose', label: t('aceGen.help.lyrics.purposeHeader') }]"
+          :rows="tm('aceGen.help.lyrics.rows') as { tag: string; purpose: string }[]"
+        />
+        <HelpSection :title="t('aceGen.help.lyrics.marksTitle')" :intro="t('aceGen.help.lyrics.marksIntro')">
+          <HelpTable :columns="[{ key: 'tag', mono: true, nowrap: true }, { key: 'purpose' }]" :rows="tm('aceGen.help.lyrics.marks') as { tag: string; purpose: string }[]" />
+        </HelpSection>
+        <HelpSection :title="t('aceGen.help.lyrics.tipsTitle')" tone="tips">
+          <HelpList :items="tm('aceGen.help.lyrics.tips') as string[]" />
+        </HelpSection>
+        <HelpSection :title="t('aceGen.help.lyrics.exampleTitle')">
+          <HelpExamples :items="[{ text: t('aceGen.help.lyrics.example') }]" mono pickable @pick="useLyricsExample" />
+        </HelpSection>
+      </HelpBody>
     </HelpModal>
-    <HelpModal :open="helpOpen === 'remix'" :title="t('aceGen.help.remix.title')" @close="helpOpen = null">
-      <table class="w-full border-collapse text-xs">
-        <thead>
-          <tr class="border-b border-border text-left text-text">
-            <th class="py-1 pr-2">{{ t('aceGen.help.remix.scenarioHeader') }}</th>
-            <th class="py-1">{{ t('aceGen.help.remix.whatHeader') }}</th>
-            <th class="py-1">{{ t('aceGen.help.remix.tuneHeader') }}</th>
-          </tr>
-        </thead>
-        <tbody class="align-top">
-          <tr v-for="row in (tm('aceGen.help.remix.rows') as { scenario: string; what: string; tune: string }[])" :key="row.scenario" class="border-b border-border/60">
-            <td class="py-1.5 pr-2 font-medium text-text">{{ row.scenario }}</td>
-            <td class="py-1.5 pr-2">{{ row.what }}</td>
-            <td class="py-1.5">{{ row.tune }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p class="font-medium text-text">{{ t('aceGen.help.remix.paramsTitle') }}</p>
-      <ul class="list-disc space-y-1 pl-4">
-        <li v-for="(p, i) in (tm('aceGen.help.remix.params') as string[])" :key="i" v-html="p"></li>
-      </ul>
-      <p class="font-medium text-text">{{ t('aceGen.help.remix.unavailableTitle') }}</p>
-      <p class="text-xs text-text-dim">{{ t('aceGen.help.remix.unavailable') }}</p>
+    <HelpModal :open="helpOpen === 'remix'" :title="t('aceGen.help.remix.title')" wide @close="helpOpen = null">
+      <HelpBody>
+        <HelpTable
+          :columns="[
+            { key: 'scenario', label: t('aceGen.help.remix.scenarioHeader') },
+            { key: 'what', label: t('aceGen.help.remix.whatHeader') },
+            { key: 'tune', label: t('aceGen.help.remix.tuneHeader') },
+          ]"
+          :rows="tm('aceGen.help.remix.rows') as { scenario: string; what: string; tune: string }[]"
+          min-width="36rem"
+        />
+        <HelpSection :title="t('aceGen.help.remix.paramsTitle')">
+          <HelpList :items="tm('aceGen.help.remix.params') as string[]" html />
+        </HelpSection>
+        <HelpSection :title="t('aceGen.help.remix.unavailableTitle')" tone="note">
+          <p>{{ t('aceGen.help.remix.unavailable') }}</p>
+        </HelpSection>
+      </HelpBody>
     </HelpModal>
-    <HelpModal :open="helpOpen === 'advanced'" :title="t('aceGen.help.advanced.title')" @close="helpOpen = null">
-      <table class="w-full border-collapse text-xs">
-        <thead>
-          <tr class="border-b border-border text-left text-text">
-            <th class="py-1 pr-2">{{ t('aceGen.help.advanced.paramHeader') }}</th>
-            <th class="py-1">{{ t('aceGen.help.advanced.whatHeader') }}</th>
-          </tr>
-        </thead>
-        <tbody class="align-top">
-          <tr v-for="row in (tm('aceGen.help.advanced.rows') as { param: string; what: string }[])" :key="row.param" class="border-b border-border/60">
-            <td class="py-1.5 pr-2 font-medium text-text">{{ row.param }}</td>
-            <td class="py-1.5">{{ row.what }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p class="text-xs text-text-dim">{{ t('aceGen.help.advanced.footer') }}</p>
+    <HelpModal :open="helpOpen === 'advanced'" :title="t('aceGen.help.advanced.title')" wide @close="helpOpen = null">
+      <HelpBody>
+        <HelpTable
+          :columns="[{ key: 'param', label: t('aceGen.help.advanced.paramHeader'), nowrap: true }, { key: 'what', label: t('aceGen.help.advanced.whatHeader') }]"
+          :rows="tm('aceGen.help.advanced.rows') as { param: string; what: string }[]"
+        />
+        <HelpSection tone="note">
+          <p>{{ t('aceGen.help.advanced.footer') }}</p>
+        </HelpSection>
+      </HelpBody>
     </HelpModal>
   </div>
 </template>

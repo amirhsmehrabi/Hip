@@ -29,6 +29,11 @@ import RepaintIcon from '../shared/icons/RepaintIcon.vue'
 import SparklesIcon from '../shared/icons/SparklesIcon.vue'
 import HelpIconButton from '../shared/HelpIconButton.vue'
 import HelpModal from '../shared/HelpModal.vue'
+import HelpBody from '../shared/help/HelpBody.vue'
+import HelpSection from '../shared/help/HelpSection.vue'
+import HelpList from '../shared/help/HelpList.vue'
+import HelpTable from '../shared/help/HelpTable.vue'
+import HelpExamples from '../shared/help/HelpExamples.vue'
 import NotInstalled from '../shared/NotInstalled.vue'
 import { useFeaturesStore } from '../../stores/features'
 
@@ -766,98 +771,57 @@ function statusText(job: AiPartJob): string {
       </div>
     </div>
 
-    <HelpModal :open="helpOpen === 'description'" :title="t('aiPart.help.title')" @close="helpOpen = null">
-      <p>{{ t('aiPart.help.intro') }}</p>
-      <table class="w-full border-collapse text-xs">
-        <thead>
-          <tr class="border-b border-border text-left text-text">
-            <th class="py-1 pl-1 pr-2">{{ t('aiPart.help.modeHeader') }}</th>
-            <th class="py-1 pr-2">{{ t('aiPart.help.whatHeader') }}</th>
-            <th class="py-1">{{ t('aiPart.help.exampleHeader') }}</th>
-          </tr>
-        </thead>
-        <tbody class="align-top">
-          <!-- the mode the panel is in is highlighted -->
-          <tr
-            v-for="row in (tm('aiPart.help.modes') as { mode: AiMode; what: string; example: string }[])"
-            :key="row.mode"
-            class="border-b border-border/60"
-            :class="row.mode === mode ? 'bg-accent1/10' : ''"
-          >
-            <td class="whitespace-nowrap py-1.5 pl-1 pr-2 font-medium text-text">{{ t(`aiPart.modes.${row.mode}`) }}</td>
-            <td class="py-1.5 pr-2">{{ row.what }}</td>
-            <td class="py-1.5 pr-1 font-mono text-[11px]">{{ row.example }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p class="font-medium text-text">{{ t('aiPart.help.partTitle') }}</p>
-      <table class="w-full border-collapse text-xs">
-        <thead>
-          <tr class="border-b border-border text-left text-text">
-            <th class="py-1 pr-2">{{ t('aiPart.help.dimHeader') }}</th>
-            <th class="py-1">{{ t('aiPart.help.wordsHeader') }}</th>
-          </tr>
-        </thead>
-        <tbody class="align-top">
-          <tr v-for="row in (tm('aiPart.help.dims') as { dim: string; words: string }[])" :key="row.dim" class="border-b border-border/60">
-            <td class="whitespace-nowrap py-1.5 pr-2 font-medium text-text">{{ row.dim }}</td>
-            <td class="py-1.5">{{ row.words }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p class="font-medium text-text">{{ t('aiPart.help.tipsTitle') }}</p>
-      <ul class="list-disc space-y-1 pl-4">
-        <li v-for="tip in (tm('aiPart.help.tips') as string[])" :key="tip">{{ tip }}</li>
-      </ul>
-      <p class="font-medium text-text">{{ t('aiPart.help.examplesTitle') }}</p>
-      <p class="text-xs">{{ t('aiPart.help.useExample') }}</p>
-      <div class="flex flex-col gap-1.5">
-        <button
-          v-for="ex in (tm('aiPart.help.examples') as { track: AiTrack; text: string }[])"
-          :key="ex.track"
-          type="button"
-          class="rounded bg-panel-2 p-2 text-left text-xs hover:bg-accent1/10"
-          @click="applyExample(ex)"
-        >
-          <span class="mr-1.5 font-medium text-text">{{ t(`aiPart.tracks.${ex.track}`) }}:</span>
-          <span class="font-mono">{{ ex.text }}</span>
-        </button>
-      </div>
+    <!-- The help windows, in the editor guide's look (HelpBody, HelpSection, HelpTable) -->
+    <HelpModal :open="helpOpen === 'description'" :title="t('aiPart.help.title')" wide @close="helpOpen = null">
+      <HelpBody :lead="t('aiPart.help.intro')">
+        <!-- the mode the panel is in is highlighted -->
+        <HelpTable
+          :columns="[
+            { key: 'name', label: t('aiPart.help.modeHeader'), nowrap: true },
+            { key: 'what', label: t('aiPart.help.whatHeader') },
+            { key: 'example', label: t('aiPart.help.exampleHeader'), mono: true },
+          ]"
+          :rows="(tm('aiPart.help.modes') as { mode: AiMode; what: string; example: string }[]).map((r) => ({ ...r, name: t(`aiPart.modes.${r.mode}`) }))"
+          :current="(r) => r.mode === mode"
+          min-width="34rem"
+        />
+        <HelpSection :title="t('aiPart.help.partTitle')">
+          <HelpTable
+            :columns="[{ key: 'dim', label: t('aiPart.help.dimHeader'), nowrap: true }, { key: 'words', label: t('aiPart.help.wordsHeader') }]"
+            :rows="tm('aiPart.help.dims') as { dim: string; words: string }[]"
+          />
+        </HelpSection>
+        <HelpSection :title="t('aiPart.help.tipsTitle')" tone="tips">
+          <HelpList :items="tm('aiPart.help.tips') as string[]" />
+        </HelpSection>
+        <HelpSection :title="t('aiPart.help.examplesTitle')">
+          <HelpExamples
+            :items="(tm('aiPart.help.examples') as { track: AiTrack; text: string }[]).map((x) => ({ label: t(`aiPart.tracks.${x.track}`), text: x.text }))"
+            mono
+            pickable
+            @pick="(i) => applyExample((tm('aiPart.help.examples') as { track: AiTrack; text: string }[])[i])"
+          />
+        </HelpSection>
+      </HelpBody>
     </HelpModal>
 
     <!-- The tag tables and the example are the ones from ACE-Step generation: the same model reads the lyrics. -->
-    <HelpModal :open="helpOpen === 'lyrics'" :title="t('aiPart.lyricsHelp.title')" @close="helpOpen = null">
-      <p>{{ t('aiPart.lyricsHelp.intro') }}</p>
-      <table class="w-full border-collapse text-xs">
-        <thead>
-          <tr class="border-b border-border text-left text-text">
-            <th class="py-1 pr-2">{{ t('aceGen.help.lyrics.tagHeader') }}</th>
-            <th class="py-1">{{ t('aceGen.help.lyrics.purposeHeader') }}</th>
-          </tr>
-        </thead>
-        <tbody class="align-top">
-          <tr v-for="row in (tm('aceGen.help.lyrics.rows') as { tag: string; purpose: string }[])" :key="row.tag" class="border-b border-border/60">
-            <td class="py-1.5 pr-2 font-mono text-text">{{ row.tag }}</td>
-            <td class="py-1.5">{{ row.purpose }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p class="font-medium text-text">{{ t('aceGen.help.lyrics.marksTitle') }}</p>
-      <p>{{ t('aceGen.help.lyrics.marksIntro') }}</p>
-      <table class="w-full border-collapse text-xs">
-        <tbody class="align-top">
-          <tr v-for="row in (tm('aceGen.help.lyrics.marks') as { tag: string; purpose: string }[])" :key="row.tag" class="border-b border-border/60">
-            <td class="py-1.5 pr-2 font-mono text-text">{{ row.tag }}</td>
-            <td class="py-1.5">{{ row.purpose }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p class="font-medium text-text">{{ t('aiPart.lyricsHelp.tipsTitle') }}</p>
-      <ul class="list-disc space-y-1 pl-4">
-        <li v-for="tip in (tm('aiPart.lyricsHelp.tips') as string[])" :key="tip">{{ tip }}</li>
-      </ul>
-      <p class="font-medium text-text">{{ t('aceGen.help.lyrics.exampleTitle') }}</p>
-      <p class="whitespace-pre-line rounded bg-panel-2 p-2 font-mono text-xs">{{ t('aceGen.help.lyrics.example') }}</p>
+    <HelpModal :open="helpOpen === 'lyrics'" :title="t('aiPart.lyricsHelp.title')" wide @close="helpOpen = null">
+      <HelpBody :lead="t('aiPart.lyricsHelp.intro')">
+        <HelpTable
+          :columns="[{ key: 'tag', label: t('aceGen.help.lyrics.tagHeader'), mono: true, nowrap: true }, { key: 'purpose', label: t('aceGen.help.lyrics.purposeHeader') }]"
+          :rows="tm('aceGen.help.lyrics.rows') as { tag: string; purpose: string }[]"
+        />
+        <HelpSection :title="t('aceGen.help.lyrics.marksTitle')" :intro="t('aceGen.help.lyrics.marksIntro')">
+          <HelpTable :columns="[{ key: 'tag', mono: true, nowrap: true }, { key: 'purpose' }]" :rows="tm('aceGen.help.lyrics.marks') as { tag: string; purpose: string }[]" />
+        </HelpSection>
+        <HelpSection :title="t('aiPart.lyricsHelp.tipsTitle')" tone="tips">
+          <HelpList :items="tm('aiPart.lyricsHelp.tips') as string[]" />
+        </HelpSection>
+        <HelpSection :title="t('aceGen.help.lyrics.exampleTitle')">
+          <HelpExamples :items="[{ text: t('aceGen.help.lyrics.example') }]" mono />
+        </HelpSection>
+      </HelpBody>
     </HelpModal>
   </section>
 </template>
