@@ -15,14 +15,16 @@ const TIMEOUT_MS = 5 * 60 * 1000;
 
 const b64url = (buf) => buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
-/** The page the browser shows after the redirect: the user goes back to the app. */
-function donePage(ok) {
+const escHtml = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+/** The page the browser shows after the redirect: the user goes back to the app; a failure says why. */
+function donePage(ok, reason = '') {
   const [en, ru] = ok
     ? ['Signed in. You can close this tab and go back to Remiqora.', 'Вход выполнен. Закройте вкладку и вернитесь в Remiqora.']
     : ['Sign-in did not finish. Go back to Remiqora and try again.', 'Вход не завершён. Вернитесь в Remiqora и попробуйте ещё раз.'];
   return `<!doctype html><meta charset="utf-8"><title>Remiqora</title>
 <body style="font:16px/1.5 system-ui,sans-serif;background:#0f0f14;color:#ececf1;display:grid;place-items:center;height:100vh;margin:0">
-<div style="max-width:32rem;padding:24px"><p>${en}</p><p>${ru}</p></div></body>`;
+<div style="max-width:32rem;padding:24px"><p>${en}</p><p>${ru}</p>${reason ? `<p style="color:#9a9aab;font-size:14px">${escHtml(reason)}</p>` : ''}</div></body>`;
 }
 
 /**
@@ -56,10 +58,21 @@ function signInWithHuggingFace({ openUrl, signal } = {}) {
       if (params.get('state') !== state) { res.writeHead(400).end(); return; }
       const code = params.get('code');
       if (!code) {
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }).end(donePage(false));
-        fail('denied', params.get('error_description') || params.get('error') || 'no code');
+        const why = params.get('error_description') || params.get('error') || 'no code in the redirect';
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }).end(donePage(false, why));
+        fail('denied', why);
         return;
       }
+      // A code can be exchanged once. A browser may load the redirect twice (Hugging Face sends it back at once when
+      // the app was authorized before), so every request waits for the one exchange and shows its outcome.
+      if (!exchange) exchange = exchangeCode(code);
+      const outcome = await exchange;
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }).end(donePage(!!outcome.token, outcome.error));
+      if (outcome.token) finish(null, outcome.token);
+      else fail('network', `token exchange: ${outcome.error}`);
+    });
+    let exchange = null;
+    const exchangeCode = async (code) => {
       try {
         const r = await fetch(`${HF}/oauth/token`, {
           method: 'POST',
@@ -68,14 +81,12 @@ function signInWithHuggingFace({ openUrl, signal } = {}) {
           signal: AbortSignal.timeout(20000),
         });
         const body = await r.json().catch(() => ({}));
-        if (!r.ok || !body.access_token) throw new Error(body.error_description || body.error || `HTTP ${r.status}`);
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }).end(donePage(true));
-        finish(null, body.access_token);
+        if (!r.ok || !body.access_token) return { error: body.error_description || body.error || `HTTP ${r.status}` };
+        return { token: body.access_token };
       } catch (err) {
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }).end(donePage(false));
-        fail('network', err.message);
+        return { error: err.message };
       }
-    });
+    };
     const timer = setTimeout(() => fail('timeout'), TIMEOUT_MS);
     signal?.addEventListener('abort', onAbort, { once: true });
     server.on('error', (err) => fail('network', err.message));

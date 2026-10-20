@@ -167,7 +167,7 @@
     let status = '';
     if (hfBusy) status = t(hfBusy === 'browser' ? 'hf.waiting' : 'hf.checking');
     else if (hf) {
-      status = hf.code ? t('hf.' + hf.code)
+      status = hf.code ? t('hf.' + hf.code) + (hf.detail ? ` (${hf.detail})` : '')
         : hf.denied.length ? t('hf.denied', { user: hf.user, models: hf.denied.join(', ') })
         : hfReady() ? t('hf.ok', { user: hf.user })
         : t('hf.recheck'); // another checkpoint was ticked after the check

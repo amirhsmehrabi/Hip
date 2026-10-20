@@ -338,8 +338,10 @@ function buildComponents({ L, manifest, platform, resources, selection }) {
   const downloadSa3 = async (ctx, model, onBytes) => {
     let failure = null;
     try {
+      // a token from the browser sign-in comes this way (it expires, so it is not saved); else the saved one is used
+      const env = ctx.hfToken ? { ...uvEnv(L), HF_TOKEN: ctx.hfToken } : uvEnv(L);
       await runCommand(sa3Python, ['-m', 'sa3_server.download', model, '--json'], {
-        cwd: L.stableAudio, env: uvEnv(L), signal: ctx.signal, logFile,
+        cwd: L.stableAudio, env, signal: ctx.signal, logFile,
         onLine: (line) => {
           let ev;
           try { ev = JSON.parse(line); } catch { return; }

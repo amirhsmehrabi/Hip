@@ -33,6 +33,8 @@ let savedPort = null;
 let savedFeatures = null;
 // A Hugging Face token the first-run screen checked; written into the chosen folder when the setup starts.
 let pendingHfToken = null;
+// A token from the browser sign-in: it expires in hours, so it is handed to this session's downloads, not saved.
+let sessionHfToken = null;
 let hfSignIn = null; // the browser sign-in waiting for its redirect
 
 /** The context every setup call works with; `selection` is what the user picked, widened by what is installed. */
@@ -85,17 +87,18 @@ const savedHfToken = () => { try { return fs.readFileSync(hfTokenFile(), 'utf8')
  * Checks a Hugging Face token (or the one saved in the chosen folder) against the Stable Audio 3 checkpoints picked:
  * whose token it is, and which gated repos it may not download yet (the licence not accepted on the model page).
  * Hugging Face answers a file request on a gated repo with 403 until then. The token never leaves this process
- * except to huggingface.co.
+ * except to huggingface.co. A pasted token is kept to be saved into the folder at the start (it lasts); one from the
+ * browser sign-in (`session`) expires after 8 hours, so it only serves this run's downloads and is never saved.
  */
-async function checkHfToken(token, models) {
-  const use = String(token || '').trim() || pendingHfToken || savedHfToken();
+async function checkHfToken(token, models, { session = false } = {}) {
+  const use = String(token || '').trim() || pendingHfToken || sessionHfToken || savedHfToken();
   if (!use) return { ok: false, code: 'empty' };
   const get = (url, method = 'GET') => fetch(url, { method, headers: { Authorization: `Bearer ${use}` }, redirect: 'manual', signal: AbortSignal.timeout(20000) });
   let user = '';
   try {
     const who = await get('https://huggingface.co/api/whoami-v2');
     if (who.status === 401) return { ok: false, code: 'login' };
-    if (!who.ok) return { ok: false, code: 'network' };
+    if (!who.ok) return { ok: false, code: 'network', detail: `whoami: HTTP ${who.status}` };
     user = (await who.json()).name || '';
     const denied = [];
     for (const m of models) {
@@ -103,13 +106,24 @@ async function checkHfToken(token, models) {
       if (!repo) continue;
       const res = await get(`https://huggingface.co/${repo}/resolve/main/${manifest.stableAudio.requiredFiles[0]}`, 'HEAD');
       if (res.status === 401 || res.status === 403) denied.push(m);
-      else if (res.status >= 400) return { ok: false, code: 'network' };
+      else if (res.status >= 400) return { ok: false, code: 'network', detail: `${repo}: HTTP ${res.status}` };
     }
-    if (String(token || '').trim()) pendingHfToken = use;
+    if (String(token || '').trim()) {
+      if (session) sessionHfToken = use;
+      else pendingHfToken = use;
+    }
     return { ok: denied.length === 0, user, denied, checked: models };
-  } catch {
-    return { ok: false, code: 'network' };
+  } catch (err) {
+    return { ok: false, code: 'network', detail: err.message };
   }
+}
+
+/** One line in setup.log about the browser sign-in; never a token, only what went wrong. */
+async function logHf(line) {
+  try {
+    await fs.promises.mkdir(ctx.L.logs, { recursive: true });
+    await fs.promises.appendFile(path.join(ctx.L.logs, 'setup.log'), `\n[${new Date().toISOString()}] Hugging Face sign-in: ${line}\n`);
+  } catch { /* the log is a help, not a requirement */ }
 }
 
 /** Free space the pending part of the plan needs: downloads plus unpacking and caches, about a third more. */
@@ -181,7 +195,8 @@ async function launch() {
 async function startSetup() {
   if (setupAbort) return;
   setupAbort = new AbortController();
-  const run = { ...ctx, signal: setupAbort.signal };
+  // the browser sign-in's token reaches the Stable Audio downloads through the environment (HF_TOKEN), never a file
+  const run = { ...ctx, signal: setupAbort.signal, hfToken: sessionHfToken };
   try {
     await runSetup(run, send);
     send({ type: 'finished', complete: await isSetupComplete(ctx) });
@@ -212,7 +227,7 @@ function registerIpc() {
         // the Stable Audio 3 checkpoints this system can run, the ones ticked with it, and whether a token is saved
         sa3Models: sa3Offered(manifest, PLATFORM),
         sa3Defaults: sa3Defaults(manifest, PLATFORM),
-        hfTokenSaved: !!pendingHfToken || !!savedHfToken(),
+        hfTokenSaved: !!pendingHfToken || !!sessionHfToken || !!savedHfToken(),
         // nothing picked yet: the screen may still adjust the defaults to the card (q4_0 on a small one)
         untouched: savedFeatures === null,
       },
@@ -240,9 +255,13 @@ function registerIpc() {
     try {
       const token = await signInWithHuggingFace({ openUrl: (url) => shell.openExternal(url), signal: mine.signal });
       if (win && !win.isDestroyed()) win.focus();
-      return await checkHfToken(token, Array.isArray(models) ? models : []);
+      const result = await checkHfToken(token, Array.isArray(models) ? models : [], { session: true });
+      await logHf(result.user ? `signed in as ${result.user}${result.denied && result.denied.length ? `, no access yet to ${result.denied.join(', ')}` : ''}` : `token check failed: ${result.code}${result.detail ? ` (${result.detail})` : ''}`);
+      return result;
     } catch (err) {
-      return { ok: false, code: err.code === 'aborted' ? 'aborted' : err.code === 'denied' ? 'denied-login' : err.code === 'timeout' ? 'timeout' : 'network' };
+      if (err.code !== 'aborted') await logHf(`failed: ${err.code || 'error'}: ${err.message}`);
+      const code = err.code === 'aborted' ? 'aborted' : err.code === 'denied' ? 'denied-login' : err.code === 'timeout' ? 'timeout' : 'network';
+      return { ok: false, code, detail: err.code === 'aborted' ? undefined : err.message };
     } finally {
       if (hfSignIn === mine) hfSignIn = null;
     }
