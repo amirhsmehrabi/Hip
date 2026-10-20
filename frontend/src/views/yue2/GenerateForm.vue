@@ -85,23 +85,24 @@ function deletePreset(name: string) {
 
 onMounted(loadPresets)
 
-watch(
-  () => store.pendingParamsInsert,
-  (params) => {
-    if (!params) return
-    if (params.lyrics != null) lyrics.value = params.lyrics
-    if (params.style != null) style.value = params.style
-    if (params.cot != null) cot.value = params.cot
-    if (params.precision != null) precision.value = params.precision
-    if (params.seed != null) seed.value = params.seed
-    if (params.abc != null) abc.value = params.abc
-    if (params.cfg_scale != null) cfgScale.value = params.cfg_scale
-    if (params.num_inference_steps != null) numInferenceSteps.value = params.num_inference_steps
-    if (params.semantic) Object.assign(semantic, params.semantic)
-    if (params.abc_sampling) Object.assign(abcSampling, params.abc_sampling)
-    store.clearPendingParamsInsert()
-  },
-)
+// Parameters put here from elsewhere (a card's reuse, "From an idea"). Applied on a change and on mount too: when
+// they are sent while the engine is stopped, this form only appears once it runs, and they wait in the store.
+function applyInsert(params: typeof store.pendingParamsInsert) {
+  if (!params) return
+  if (params.lyrics != null) lyrics.value = params.lyrics
+  if (params.style != null) style.value = params.style
+  if (params.cot != null) cot.value = params.cot
+  if (params.precision != null) precision.value = params.precision
+  if (params.seed != null) seed.value = params.seed
+  if (params.abc != null) abc.value = params.abc
+  if (params.cfg_scale != null) cfgScale.value = params.cfg_scale
+  if (params.num_inference_steps != null) numInferenceSteps.value = params.num_inference_steps
+  if (params.semantic) Object.assign(semantic, params.semantic)
+  if (params.abc_sampling) Object.assign(abcSampling, params.abc_sampling)
+  store.clearPendingParamsInsert()
+}
+watch(() => store.pendingParamsInsert, applyInsert)
+onMounted(() => applyInsert(store.pendingParamsInsert))
 
 const lyrics = ref('')
 const style = ref('')

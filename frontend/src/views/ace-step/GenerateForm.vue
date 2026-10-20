@@ -106,34 +106,35 @@ function deletePreset(name: string) {
 
 onMounted(loadPresets)
 
-watch(
-  () => store.pendingParamsInsert,
-  (params) => {
-    if (!params) return
-    if (params.prompt || params.query) {
-      if (params.prompt) {
-        mode.value = 'custom'
-        customPrompt.value = params.prompt
-      } else if (params.query) {
-        mode.value = 'simple'
-        simpleQuery.value = params.query
-      }
+// Parameters put here from elsewhere (a card's reuse, "From an idea"). Applied on a change and on mount too: when
+// they are sent while the engine is stopped, this form only appears once it runs, and they wait in the store.
+function applyInsert(params: typeof store.pendingParamsInsert) {
+  if (!params) return
+  if (params.prompt || params.query) {
+    if (params.prompt) {
+      mode.value = 'custom'
+      customPrompt.value = params.prompt
+    } else if (params.query) {
+      mode.value = 'simple'
+      simpleQuery.value = params.query
     }
-    if (params.lyrics != null) customLyrics.value = params.lyrics
-    if (params.instrumental != null) instrumental.value = params.instrumental
-    if (params.duration != null) duration.value = params.duration
-    if (params.audio_format != null) audioFormat.value = params.audio_format
-    if (params.bpm != null) bpm.value = params.bpm
-    if (params.key_scale != null) keyScale.value = params.key_scale
-    if (params.time_signature != null) timeSignature.value = params.time_signature
-    if (params.vocal_language != null) vocalLanguage.value = params.vocal_language
-    if (params.inference_steps != null) inferenceSteps.value = params.inference_steps
-    if (params.guidance_scale != null) guidanceScale.value = params.guidance_scale
-    if (params.seed != null) seedValue.value = params.seed
-    if (params.model != null) selectedModel.value = params.model
-    store.clearPendingParamsInsert()
-  },
-)
+  }
+  if (params.lyrics != null) customLyrics.value = params.lyrics
+  if (params.instrumental != null) instrumental.value = params.instrumental
+  if (params.duration != null) duration.value = params.duration
+  if (params.audio_format != null) audioFormat.value = params.audio_format
+  if (params.bpm != null) bpm.value = params.bpm
+  if (params.key_scale != null) keyScale.value = params.key_scale
+  if (params.time_signature != null) timeSignature.value = params.time_signature
+  if (params.vocal_language != null) vocalLanguage.value = params.vocal_language
+  if (params.inference_steps != null) inferenceSteps.value = params.inference_steps
+  if (params.guidance_scale != null) guidanceScale.value = params.guidance_scale
+  if (params.seed != null) seedValue.value = params.seed
+  if (params.model != null) selectedModel.value = params.model
+  store.clearPendingParamsInsert()
+}
+watch(() => store.pendingParamsInsert, applyInsert)
+onMounted(() => applyInsert(store.pendingParamsInsert))
 
 const mode = ref<Mode>('simple')
 const simpleQuery = ref('')
