@@ -6,7 +6,6 @@ import logging
 import os
 import signal
 import threading
-import time
 from typing import Any
 
 import uvicorn
@@ -15,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from . import __version__, tasks
 from .engine import Model
+from .jobs import Job, Jobs
 from .models import DEFAULT_MODEL
 
 log = logging.getLogger("assistant")
@@ -29,6 +29,7 @@ class WriteRequest(BaseModel):
 
 def build_app(model: Model) -> FastAPI:
     app = FastAPI(title="prompt-assistant", version=__version__)
+    jobs = Jobs(model)
 
     @app.get("/health")
     def health() -> dict[str, Any]:
@@ -40,22 +41,35 @@ def build_app(model: Model) -> FastAPI:
         model.load()
         return health()
 
+    @app.post("/v1/jobs")
+    def submit(req: WriteRequest) -> dict[str, Any]:
+        """Queues a prompt to write; poll GET /v1/jobs/{id} for the stage, the percent and the text so far."""
+        if req.task not in tasks.TASKS:
+            raise HTTPException(422, f"unknown task '{req.task}', one of {tasks.TASKS}")
+        job = jobs.submit(Job(task=req.task, idea=req.idea, language=req.language, kind=req.kind, seed=req.seed))
+        return job.to_dict()
+
+    @app.get("/v1/jobs/{job_id}")
+    def get_job(job_id: str) -> dict[str, Any]:
+        job = jobs.get(job_id)
+        if job is None:
+            raise HTTPException(404, "no such job")
+        return job.to_dict()
+
+    @app.post("/v1/jobs/{job_id}/cancel")
+    def cancel_job(job_id: str) -> dict[str, Any]:
+        job = jobs.cancel(job_id)
+        if job is None:
+            raise HTTPException(404, "no such job")
+        return job.to_dict()
+
     @app.post("/v1/write")
     def write(req: WriteRequest) -> dict[str, Any]:
-        t0 = time.time()
-        tokens = 0
-
-        def generate(system: str, user: str, max_new: int, temperature: float, seed: int | None) -> tuple[str, int]:
-            nonlocal tokens
-            reply, n = model.generate(system, user, max_new, temperature, seed)
-            tokens += n
-            return reply, n
-
-        try:
-            fields = tasks.run(req.task, generate, req.idea, language=req.language, kind=req.kind, seed=req.seed)
-        except tasks.TaskError as exc:
-            raise HTTPException(422, str(exc)) from exc
-        return {"task": req.task, "fields": fields, "tokens": tokens, "took_ms": int((time.time() - t0) * 1000),
+        """The same in one blocking request: the fields when they are written."""
+        job = jobs.run_now(Job(task=req.task, idea=req.idea, language=req.language, kind=req.kind, seed=req.seed))
+        if job.status != "done":
+            raise HTTPException(422, job.error or job.status)
+        return {"task": req.task, "fields": job.fields, "tokens": job.total_tokens, "took_ms": job.to_dict()["took_ms"],
                 "device": model.device, "model": model.model_id}
 
     return app

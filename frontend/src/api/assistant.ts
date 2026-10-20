@@ -62,3 +62,79 @@ export const deleteAssistantModel = (id: string) => apiFetch<AssistantState>(`/a
 /** Writes a prompt; starts the assistant first when it is not running (a few seconds more). */
 export const writePrompt = (task: AssistantTask, idea: string, extra: { language?: string; kind?: string; seed?: number } = {}) =>
   apiJson<AssistantResult>('/api/assistant/v1/write', { task, idea, ...extra })
+
+/** A prompt being written (the assistant's /v1/jobs): stage, an estimated percent and the text so far. */
+export interface AssistantJob {
+  job_id: string
+  task: AssistantTask
+  status: 'queued' | 'loading' | 'running' | 'done' | 'failed' | 'cancelled'
+  stage: 'queued' | 'loading' | 'classifying' | 'writing' | 'retrying' | 'done'
+  tokens: number
+  /** The usual length of this task's reply, the base of the percent. */
+  expected: number
+  percent: number
+  /** The raw reply so far. */
+  text: string
+  /** The reply so far as a person can read it (a JSON reply's values with real line breaks). */
+  preview: string
+  fields: Record<string, string | number | null> | null
+  error: string | null
+  took_ms: number
+}
+
+/** What the page shows while a prompt is written; the first two stages happen before the job exists. */
+export interface WriteProgress {
+  stage: 'unloading' | 'starting' | AssistantJob['stage']
+  percent: number
+  tokens: number
+  preview: string
+}
+
+export class PromptCancelled extends Error {
+  constructor() {
+    super('cancelled')
+    this.name = 'PromptCancelled'
+  }
+}
+
+const POLL_MS = 500
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/**
+ * Writes a prompt and reports its progress: starts the assistant (with the GPU setting that first unloads a running
+ * engine, `unloadsEngine`), queues the job, polls it twice a second. `cancel()` stops it; the result then rejects with
+ * PromptCancelled.
+ */
+export function writePromptLive(
+  task: AssistantTask,
+  idea: string,
+  extra: { language?: string; kind?: string; seed?: number },
+  onProgress: (p: WriteProgress) => void,
+  opts: { unloadsEngine?: boolean } = {},
+): { result: Promise<AssistantResult>; cancel: () => void } {
+  let jobId: string | null = null
+  let cancelled = false
+  const cancel = () => {
+    cancelled = true
+    if (jobId) void apiJson(`/api/assistant/v1/jobs/${jobId}/cancel`, {}).catch(() => {})
+  }
+  const result = (async (): Promise<AssistantResult> => {
+    onProgress({ stage: opts.unloadsEngine ? 'unloading' : 'starting', percent: 0, tokens: 0, preview: '' })
+    await startAssistant()
+    if (cancelled) throw new PromptCancelled()
+    let job = await apiJson<AssistantJob>('/api/assistant/v1/jobs', { task, idea, ...extra })
+    jobId = job.job_id
+    if (cancelled) cancel()
+    for (;;) {
+      onProgress({ stage: job.stage, percent: job.percent, tokens: job.tokens, preview: job.preview })
+      if (job.status === 'done') {
+        return { task, fields: job.fields ?? {}, tokens: job.tokens, took_ms: job.took_ms, device: '', model: '' }
+      }
+      if (job.status === 'cancelled') throw new PromptCancelled()
+      if (job.status === 'failed') throw new Error(job.error || 'the prompt could not be written')
+      await sleep(POLL_MS)
+      job = await apiFetch<AssistantJob>(`/api/assistant/v1/jobs/${job.job_id}`)
+    }
+  })()
+  return { result, cancel }
+}

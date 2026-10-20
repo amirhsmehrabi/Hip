@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import Any
+from typing import Any, Callable
 
 import torch
 
@@ -69,8 +69,11 @@ class Model:
         self.load_seconds = time.time() - t0
         log.info("loaded %s on %s in %.1f s", self.model_id, self.device, self.load_seconds)
 
-    def generate(self, system: str, user: str, max_new_tokens: int, temperature: float, seed: int | None = None) -> tuple[str, int]:
-        """The reply text (thinking off) and how many tokens it took."""
+    def generate(self, system: str, user: str, max_new_tokens: int, temperature: float, seed: int | None = None,
+                 on_token: Callable[[str, int], None] | None = None,
+                 should_stop: Callable[[], bool] | None = None) -> tuple[str, int]:
+        """The reply text (thinking off) and how many tokens it took. `on_token(text so far, tokens)` follows the
+        writing; `should_stop()` returning True ends it early (the caller then treats the job as stopped)."""
         with self._lock:
             self._load_locked()
             text = self._tok.apply_chat_template(
@@ -80,10 +83,17 @@ class Model:
             inputs = self._tok(text, return_tensors="pt").to(self.device)
             if seed is not None:
                 torch.manual_seed(seed)
+            extra: dict[str, Any] = {}
+            if on_token is not None:
+                extra["streamer"] = _Progress(self._tok, on_token)
+            if should_stop is not None:
+                from transformers import StoppingCriteriaList
+
+                extra["stopping_criteria"] = StoppingCriteriaList([_Stop(should_stop)])
             with torch.no_grad():
                 out = self._model.generate(
                     **inputs, max_new_tokens=int(max_new_tokens),
-                    do_sample=temperature > 0, temperature=max(float(temperature), 1e-3),
+                    do_sample=temperature > 0, temperature=max(float(temperature), 1e-3), **extra,
                 )
             new = out[0][inputs["input_ids"].shape[-1]:]
             reply = self._tok.decode(new, skip_special_tokens=True).strip()
@@ -98,3 +108,40 @@ class Model:
             self.device = None
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+
+
+class _Progress:
+    """A transformers streamer: generate() hands it the prompt first, then each new token. Decodes what was written
+    so far every few tokens (a reply is at most ~900 tokens, so decoding it whole stays cheap)."""
+
+    EVERY = 4
+
+    def __init__(self, tok: Any, on_token: Callable[[str, int], None]) -> None:
+        self._tok = tok
+        self._on_token = on_token
+        self._ids: list[int] = []
+        self._prompt_seen = False
+
+    def put(self, value: Any) -> None:
+        if not self._prompt_seen:
+            self._prompt_seen = True  # the first call is the prompt
+            return
+        self._ids.extend(int(x) for x in value.reshape(-1).tolist())
+        if len(self._ids) % self.EVERY == 0:
+            self._emit()
+
+    def end(self) -> None:
+        self._emit()
+
+    def _emit(self) -> None:
+        self._on_token(self._tok.decode(self._ids, skip_special_tokens=True), len(self._ids))
+
+
+class _Stop:
+    """A stopping criterion that ends generation when the job is stopped."""
+
+    def __init__(self, should_stop: Callable[[], bool]) -> None:
+        self._should_stop = should_stop
+
+    def __call__(self, input_ids: Any, scores: Any, **kwargs: Any) -> Any:
+        return torch.full((input_ids.shape[0],), bool(self._should_stop()), dtype=torch.bool, device=input_ids.device)
