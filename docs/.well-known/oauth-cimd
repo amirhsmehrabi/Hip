@@ -1,0 +1,8 @@
+{
+  "client_id": "https://remiqora.com/.well-known/oauth-cimd",
+  "client_name": "Remiqora",
+  "client_uri": "https://remiqora.com",
+  "logo_uri": "https://remiqora.com/assets/favicon.svg",
+  "redirect_uris": ["http://127.0.0.1/callback", "http://localhost/callback"],
+  "token_endpoint_auth_method": "none"
+}
