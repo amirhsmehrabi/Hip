@@ -11,18 +11,21 @@ import { computed, onMounted, ref, watch } from 'vue'
 import type { Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import { storeToRefs } from 'pinia'
 import * as aceApi from '../../api/aceStep'
 import type { GenerateMusicRequest } from '../../api/aceStep'
 import { PromptCancelled, writePromptLive } from '../../api/assistant'
-import type { AssistantTask, WriteProgress } from '../../api/assistant'
+import type { AssistantTask } from '../../api/assistant'
+import type { Sa3ModelId } from '../../api/stableAudio'
 import { MODEL_LABELS } from '../../composables/useModelSwitch'
 import { useAceStepStore } from '../../stores/aceStep'
 import { useEnginesStore } from '../../stores/engines'
 import { useFeaturesStore } from '../../stores/features'
 import { useOrchestratorStore } from '../../stores/orchestrator'
 import { useYue2Store } from '../../stores/yue2'
+import { useIdeaStore } from '../../stores/idea'
+import type { IdeaDraft as Draft, IdeaEngine as Engine, IdeaWriter as Writer } from '../../stores/idea'
 import { useStableAudioStore } from '../../stores/stableAudio'
-import type { Sa3ModelId } from '../../api/stableAudio'
 import { guessVocalLanguage, VOCAL_LANGUAGES } from '../../utils/vocalLanguages'
 import ChipGroup from '../../components/shared/ChipGroup.vue'
 import PromptProgress from '../../components/shared/PromptProgress.vue'
@@ -40,34 +43,9 @@ const sa3 = useStableAudioStore()
 const engines = useEnginesStore()
 const features = useFeaturesStore()
 
-// ---- the idea (kept in this browser, so a reload does not lose it) ----
-const STORE_KEY = 'remiqora.idea'
-type Kind = 'song' | 'instrumental'
-type Writer = 'assistant' | 'ace'
-type Engine = 'ace' | 'yue2' | 'sa3'
-const idea = ref('')
-const kind = ref<Kind>('song')
-/** '' = from the idea's letters. */
-const language = ref('')
-const writerPref = ref<Writer>('assistant')
-const engine = ref<Engine>('ace')
-try {
-  const saved = JSON.parse(localStorage.getItem(STORE_KEY) || '{}')
-  if (typeof saved.idea === 'string') idea.value = saved.idea
-  if (saved.kind === 'song' || saved.kind === 'instrumental') kind.value = saved.kind
-  if (typeof saved.language === 'string') language.value = saved.language
-  if (saved.writer === 'assistant' || saved.writer === 'ace') writerPref.value = saved.writer
-  if (saved.engine === 'ace' || saved.engine === 'yue2' || saved.engine === 'sa3') engine.value = saved.engine
-} catch {
-  // a private window or blocked storage: start empty
-}
-watch([idea, kind, language, writerPref, engine], () => {
-  try {
-    localStorage.setItem(STORE_KEY, JSON.stringify({ idea: idea.value, kind: kind.value, language: language.value, writer: writerPref.value, engine: engine.value }))
-  } catch {
-    // not saved; nothing else depends on it
-  }
-})
+// ---- the idea: in a store, so leaving for an engine's page and coming back keeps it, and the browser keeps it ----
+const ideaStore = useIdeaStore()
+const { idea, kind, language, writerPref, engine, draft, variants, precision, sa3Model, writing, error, progress, stopping } = storeToRefs(ideaStore)
 const instrumental = computed(() => kind.value === 'instrumental')
 const effectiveLanguage = computed(() => language.value || (idea.value.trim() ? guessVocalLanguage(idea.value) : 'en'))
 const kindOptions = computed(() => [
@@ -105,7 +83,7 @@ watch(instrumental, (instr) => {
   if (instr && engine.value === 'yue2') engine.value = engineAvailable('sa3') ? 'sa3' : 'ace'
   if (!instr && engine.value === 'sa3') engine.value = 'ace'
 })
-watch(engine, () => { draft.value = null })
+watch(engine, (now) => { if (draft.value && draft.value.engine !== now) draft.value = null })
 const yue2Precisions = computed(() => features.features.yue2_precisions)
 
 // ---- who writes the prompt ----
@@ -129,44 +107,20 @@ const assistantOnGpu = computed(() => engines.assistant?.settings.device === 'cu
 const assistantOnCpu = computed(() => !!orchestrator.activeModel && !assistantOnGpu.value)
 
 // ---- the prompt, editable ----
-interface Draft {
-  engine: Engine
-  /** ACE-Step's caption, YuE2's style tags, or Stable Audio's prompt. */
-  caption: string
-  lyrics: string
-  bpm: number | null
-  keyscale: string
-  duration: number
-  timesignature: string
-  language: string
-  writtenBy: Writer
-  seconds: number
-}
-const draft = ref<Draft | null>(null)
-const writing = ref(false)
-const error = ref<string | null>(null)
-/** The assistant's progress while it writes; Stop cancels the job. */
-const progress = ref<WriteProgress | null>(null)
-const stopping = ref(false)
-let stopRun: (() => void) | null = null
-
 async function byAssistant(task: AssistantTask, extra: { language?: string; kind?: string }) {
   stopping.value = false
   const run = writePromptLive(task, idea.value.trim(), extra, (p) => { progress.value = p }, {
     unloadsEngine: assistantOnGpu.value && !!orchestrator.activeModel,
   })
-  stopRun = run.cancel
+  ideaStore.setStop(run.cancel)
   try {
     return (await run.result).fields
   } finally {
-    stopRun = null
+    ideaStore.setStop(null)
     progress.value = null
   }
 }
-function stopWriting() {
-  stopping.value = true
-  stopRun?.()
-}
+const stopWriting = () => ideaStore.stop()
 
 async function write() {
   const text = idea.value.trim()
@@ -244,10 +198,7 @@ const durationLabel = computed(() => {
 })
 
 // ---- generate ----
-const variants = ref<1 | 2 | 4>(1)
 const variantOptions = [1, 2, 4].map((n) => ({ value: n, label: String(n) }))
-const precision = ref<'q8_0' | 'q4_0'>('q8_0')
-const sa3Model = ref<Sa3ModelId>('medium')
 watch(sa3Models, (list) => { if (list.length && !list.some((m) => m.id === sa3Model.value)) sa3Model.value = list[0].id }, { immediate: true })
 const sa3Max = computed(() => sa3Models.value.find((m) => m.id === sa3Model.value)?.max ?? 120)
 watch(yue2Precisions, (list) => { if (list.length && !list.includes(precision.value)) precision.value = list[0] }, { immediate: true })

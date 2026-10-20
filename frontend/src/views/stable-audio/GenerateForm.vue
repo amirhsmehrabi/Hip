@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Text-to-audio with Stable Audio 3: a kind (music or a sound), a checkpoint, a description, a length. The
 // prompts that work best read like Freesound / AudioSparx metadata, so the help repeats that advice.
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useStableAudioStore } from '../../stores/stableAudio'
 import type { Sa3Kind, Sa3RefMode, Sa3Reference } from '../../stores/stableAudio'
@@ -178,8 +178,9 @@ watch(maxSeconds, (max) => {
   if (duration.value > max) duration.value = max
 })
 
-/** A card's "reuse" puts its parameters back here. */
-watch(() => store.pendingParamsInsert, (p) => {
+// Parameters put here from elsewhere (a card's reuse, "From an idea"). Applied on a change and on mount too: when
+// they are sent while the engine is stopped, this form only appears once it runs, and they wait in the store.
+function applyInsert(p: typeof store.pendingParamsInsert) {
   if (!p) return
   if (p.kind) kind.value = p.kind
   if (p.model) model.value = p.model
@@ -190,7 +191,9 @@ watch(() => store.pendingParamsInsert, (p) => {
   if (p.cfgScale != null) cfgScale.value = p.cfgScale
   if (p.seed != null) seed.value = p.seed
   store.clearPendingParamsInsert()
-})
+}
+watch(() => store.pendingParamsInsert, applyInsert)
+onMounted(() => applyInsert(store.pendingParamsInsert))
 
 const base = computed(() => (model.value.endsWith('-base')))
 function formatClockShort(s: number): string {
