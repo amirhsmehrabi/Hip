@@ -17,12 +17,10 @@ export default {
     models: 'Models and settings',
     editor: 'Editor',
     idea: 'From an idea',
-    lora: 'LoRA',
-    loraTitle: 'LoRA training for ACE-Step',
+    engines: 'Engines',
     desc: {
       idea: 'The assistant writes the prompt',
       ace: 'Songs, covers, remixes',
-      lora: 'Your style for ACE-Step',
       yue: 'Whole songs with vocals',
       sa3: 'Instrumentals, sounds, fill-ins',
       editor: 'Mixing and arranging',
@@ -784,6 +782,12 @@ export default {
   acePage: {
     trainingActive: 'A LoRA training run is in progress — music generation is temporarily unavailable.',
     openTrainingPage: 'Open training page',
+    tabs: {
+      label: 'ACE-Step pages',
+      generate: 'Generate',
+      lora: 'LoRA training',
+      loraHint: 'Your style for ACE-Step',
+    },
   },
   lora: {
     serverNotice: 'Dataset and training are shared ACE-Step server state (not tied to the browser tab). During training the server unloads the LLM and occupies the GPU with the decoder — music generation won\'t work during that time. Audio/dataset/tensor paths must live inside the ACE-Step project folder (e.g. {example}); the export path for the finished LoRA can be anywhere on disk.',

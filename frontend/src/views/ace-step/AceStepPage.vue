@@ -7,6 +7,7 @@ import * as trainingApi from '../../api/aceStepTraining'
 import ModelOfflineBanner from '../../components/shared/ModelOfflineBanner.vue'
 import GenerateForm from './GenerateForm.vue'
 import ResultsFeed from './ResultsFeed.vue'
+import AceStepTabs from './AceStepTabs.vue'
 
 const orchestrator = useOrchestratorStore()
 const store = useAceStepStore()
@@ -56,6 +57,7 @@ onUnmounted(() => {
 
 <template>
   <div class="space-y-6">
+    <AceStepTabs />
     <ModelOfflineBanner v-if="!isRunning" model-id="ace_step" :status="modelStatus" :error="modelError" />
     <div v-else-if="isTraining" class="rounded-xl border border-status-queued/40 bg-status-queued/10 p-6 text-center text-sm text-text-dim">
       {{ t('acePage.trainingActive') }}
