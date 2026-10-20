@@ -239,6 +239,8 @@ class Assistant:
         self._last_used = time.monotonic()
         self._watcher: Optional[asyncio.Task] = None
         self._started_with: Optional[tuple[str, str, int]] = None
+        # the engine unloaded to make room on the GPU (device "GPU"), so the page can say which one to start again
+        self.unloaded_engine: Optional[str] = None
 
     @property
     def started_model(self) -> Optional[str]:
@@ -262,7 +264,8 @@ class Assistant:
 
     async def release_gpu(self) -> None:
         """A GPU engine is about to start: an assistant holding the GPU steps aside. With "auto" its next request
-        starts it again, on the CPU if the engine took the room."""
+        starts it again, on the CPU if the engine took the room; with "GPU" it unloads the engine again."""
+        self.unloaded_engine = None
         if self.status == "running" and (await asyncio.to_thread(self.live)).get("device") == "cuda":
             log.info("a GPU engine is starting: stopping the prompt assistant, which held the GPU")
             await self.stop()
@@ -294,6 +297,7 @@ class Assistant:
             "device": live.get("device"),
             "loaded": bool(live.get("loaded")),
             "restart_pending": self.status == "running" and self._started_with != (s.model, s.device, s.threads),
+            "unloaded_engine": self.unloaded_engine,
         }
 
     @staticmethod
@@ -325,6 +329,12 @@ class Assistant:
         if not installed(s.model):
             raise FileNotFoundError(f"the model '{s.model}' is not downloaded")
         self.touch()
+        up = self._proc is not None and self._proc.is_running and self._started_with == (s.model, s.device, s.threads)
+        # Device "GPU": the assistant takes the GPU the way an engine does. A running engine is unloaded first;
+        # when an engine starts again (Generate), the assistant leaves the GPU (release_gpu). Done outside our lock:
+        # the orchestrator's switch holds its own lock while it asks us to leave the GPU.
+        if s.device == "cuda" and not up:
+            await self._free_gpu_for_assistant()
         async with self._lock:
             if self._proc is not None and self._proc.is_running and self._started_with == (s.model, s.device, s.threads):
                 self.status = "running"
@@ -353,6 +363,16 @@ class Assistant:
             self.touch()
         if self._watcher is None or self._watcher.done():
             self._watcher = asyncio.create_task(self._watch_idle())
+
+    async def _free_gpu_for_assistant(self) -> None:
+        from .config import ALLOW_CONCURRENT_MODELS
+        from .orchestrator.manager import manager
+
+        if ALLOW_CONCURRENT_MODELS or manager.state.active_model is None:
+            return
+        log.info("the prompt assistant runs on the GPU: unloading %s first", manager.state.active_model)
+        self.unloaded_engine = manager.state.active_model
+        await manager.stop_active()
 
     async def stop(self) -> None:
         if self._cancel is not None:

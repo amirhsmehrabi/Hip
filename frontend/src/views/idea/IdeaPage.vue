@@ -121,8 +121,10 @@ const writerOptions = computed(() => [
   { value: 'assistant', label: t('idea.writerAssistant'), disabled: !assistantReady.value },
   { value: 'ace', label: t('idea.writerAce'), disabled: !aceRunning.value },
 ])
-/** An engine holds the GPU: the assistant writes on the CPU, so it takes longer. */
-const assistantOnCpu = computed(() => !!orchestrator.activeModel)
+/** The assistant set to the GPU: it unloads a running engine to write, and leaves when Generate starts the engine. */
+const assistantOnGpu = computed(() => engines.assistant?.settings.device === 'cuda')
+/** An engine holds the GPU and the assistant is not set to take it: it writes on the CPU, so it takes longer. */
+const assistantOnCpu = computed(() => !!orchestrator.activeModel && !assistantOnGpu.value)
 
 // ---- the prompt, editable ----
 interface Draft {
@@ -200,7 +202,11 @@ async function write() {
         seconds: seconds(),
       }
     }
-    if (writer.value === 'assistant') void engines.load()
+    if (writer.value === 'assistant') {
+      void engines.load()
+      // on the GPU the assistant may have unloaded the running engine
+      if (assistantOnGpu.value) void orchestrator.refresh()
+    }
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -395,7 +401,7 @@ onMounted(() => {
       </div>
       <p class="mt-2 text-xs leading-relaxed" :class="writer ? 'text-text-dim' : 'text-status-queued'">
         <template v-if="writer === 'ace'">{{ t('idea.byAce') }}</template>
-        <template v-else-if="writer === 'assistant'">{{ t(assistantOnCpu ? 'idea.byAssistantCpu' : 'idea.byAssistant') }}</template>
+        <template v-else-if="writer === 'assistant'">{{ assistantOnGpu ? t('idea.byAssistantGpu', { engine: MODEL_LABELS[engineInfo.model] }) : t(assistantOnCpu ? 'idea.byAssistantCpu' : 'idea.byAssistant') }}</template>
         <template v-else-if="engine !== 'ace'">
           {{ t('idea.noWriterAssistant') }} <RouterLink to="/models#assistant" class="text-accent1 underline">{{ t('idea.setupAssistant') }}</RouterLink>
         </template>
@@ -404,7 +410,7 @@ onMounted(() => {
           <button type="button" class="text-accent1 underline disabled:opacity-50" :disabled="orchestrator.switching" @click="startAce">{{ t('idea.startAce') }}</button>
           · <RouterLink to="/models#assistant" class="text-accent1 underline">{{ t('idea.setupAssistant') }}</RouterLink>
         </template>
-        <span v-if="writing" class="ml-1">{{ t(writer === 'ace' ? 'idea.writingAce' : 'idea.writingAssistant') }}</span>
+        <span v-if="writing" class="ml-1">{{ t(writer === 'ace' ? 'idea.writingAce' : assistantOnGpu && orchestrator.activeModel ? 'idea.writingAssistantGpu' : 'idea.writingAssistant') }}</span>
       </p>
       <p v-if="error" class="mt-3 rounded-lg bg-status-failed/10 p-3 text-xs text-status-failed" role="alert">{{ error }}</p>
     </section>

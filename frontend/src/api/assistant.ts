@@ -36,6 +36,8 @@ export interface AssistantState {
   device: 'cpu' | 'cuda' | 'mps' | null
   loaded: boolean
   restart_pending: boolean
+  /** The engine unloaded so the assistant could take the GPU (device "GPU"); cleared when an engine starts. */
+  unloaded_engine: 'ace_step' | 'yue2' | 'stable_audio' | null
 }
 
 export interface AssistantResult {
