@@ -19,7 +19,7 @@ dependencies = [
   "huggingface-hub>=1.7",
   # Prebuilt Flash Attention 2 for Windows (Stable Audio 3 Medium needs it; the small models do not).
   "flash-attn @ https://huggingface.co/lldacing/flash-attention-windows-wheel/resolve/main/flash_attn-2.7.4.post1%2Bcu128torch2.7.0cxx11abiFALSE-cp312-cp312-win_amd64.whl ; sys_platform == 'win32'",
-  "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.4.10/flash_attn-2.8.2+cu128torch2.7-cp312-cp312-linux_x86_64.whl ; sys_platform == 'linux'",
+  "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.7.16/flash_attn-2.7.4%2Bcu128torch2.7-cp312-cp312-linux_x86_64.whl ; sys_platform == 'linux'",
 ]
 
 [project.scripts]
@@ -28,6 +28,10 @@ sa3-server = "sa3_server.main:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+# stable-audio-3 and the Flash Attention wheels are URLs
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["sa3_server"]
