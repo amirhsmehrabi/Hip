@@ -166,3 +166,30 @@ export async function loraScale(scale: number): Promise<void> {
 export function audioUrl(path: string): string {
   return `${BASE}/v1/audio?path=${encodeURIComponent(path)}`
 }
+
+/** What ACE-Step's own language model writes from a description (its "Simple Mode", /v1/create_sample). */
+export interface CreatedSample {
+  caption: string
+  lyrics: string
+  bpm: number | null
+  keyscale: string
+  duration: number | null
+  timesignature: string
+  vocal_language: string
+}
+
+/**
+ * ACE-Step's language model turns a description into a style caption, lyrics with sections, BPM, key and length,
+ * in the format ACE-Step itself expects (RFC 0002, section 5). Needs ACE-Step running.
+ */
+export async function createSample(query: string, instrumental: boolean, vocalLanguage?: string): Promise<CreatedSample> {
+  const raw = await apiJson<Envelope<CreatedSample> | CreatedSample>(`${BASE}/v1/create_sample`, {
+    query,
+    instrumental,
+    ...(vocalLanguage ? { vocal_language: vocalLanguage } : {}),
+  })
+  // ACE-Step reports its own failures inside a 200 envelope: {code: 500, error}.
+  const env = raw as Envelope<CreatedSample>
+  if (env && typeof env === 'object' && 'code' in env && env.code >= 400) throw new Error(env.error || `create_sample failed (${env.code})`)
+  return unwrap(raw)
+}

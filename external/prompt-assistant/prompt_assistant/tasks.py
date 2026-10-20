@@ -35,6 +35,12 @@ def language_name(code: str | None, idea: str) -> str:
     return "Russian" if re.search(r"[а-яё]", idea, re.IGNORECASE) else "English"
 
 
+def clean_lyrics(text: str) -> str:
+    """A small model sometimes escapes its line breaks twice: they arrive as a backslash and an n."""
+    text = text.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\r\n", "\n")
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
 def parse_json(reply: str) -> dict[str, Any]:
     """The first JSON object in the reply; an unterminated string or object is closed before giving up."""
     start = reply.find("{")
@@ -124,7 +130,7 @@ def yue2_song(generate: Generate, idea: str, language: str | None = None, seed: 
         reply, _ = generate(YUE2_SONG.replace("{lang}", lang), idea, 900, 0.8, None if seed is None else seed + attempt)
         try:
             data = parse_json(reply)
-            style, lyrics = str(data.get("style", "")).strip(), str(data.get("lyrics", "")).strip()
+            style, lyrics = str(data.get("style", "")).strip(), clean_lyrics(str(data.get("lyrics", "")))
             if style and "[" in lyrics:
                 return {"style": style, "lyrics": lyrics, "language": lang}
             last = TaskError("the reply has no style or no sectioned lyrics")
@@ -159,7 +165,7 @@ def ace(generate: Generate, idea: str, instrumental: bool, language: str | None 
                 raise TaskError("the reply has no caption")
             return {
                 "caption": caption,
-                "lyrics": "[Instrumental]" if instrumental else str(data.get("lyrics", "")).strip(),
+                "lyrics": "[Instrumental]" if instrumental else clean_lyrics(str(data.get("lyrics", ""))),
                 "bpm": _int(data.get("bpm")),
                 "keyscale": str(data.get("keyscale") or "").strip() or None,
                 "duration": _int(data.get("duration")),
