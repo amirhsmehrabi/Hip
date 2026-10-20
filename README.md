@@ -8,7 +8,7 @@
 <p align="center"><i>Made with AI. Made by you.</i></p>
 
 <p align="center">
-  A local, GPU-powered music generation and production studio — one interface for <b>ACE-Step 1.5</b> and <b>YuE2-3B</b>, with a built-in multitrack DAW and an <b>AI arranger</b> that writes new parts into your track.
+  A local, GPU-powered music generation and production studio — one interface for <b>ACE-Step 1.5</b>, <b>YuE2-3B</b> and <b>Stable Audio 3</b>, with a built-in multitrack DAW, an <b>AI arranger</b> that writes new parts into your track, and <b>From an idea</b>: one phrase in, and a local language model writes the prompt.
 </p>
 
 <p align="center">🚧 Actively in development — expect breaking changes, bugs, and rough edges. Not a stable release yet.</p>
@@ -31,6 +31,7 @@
 <p align="center">
   <a href="#why-this-exists">Why</a> ·
   <a href="#whats-inside">What's inside</a> ·
+  <a href="#from-an-idea">From an idea</a> ·
   <a href="#ace-step-generation">ACE-Step</a> ·
   <a href="#yue2-and-sheetsage2-generation">YuE2</a> ·
   <a href="#lora-training-ace-step">LoRA</a> ·
@@ -53,6 +54,7 @@ ACE-Step and YuE2 are two independent music generation engines, each with its ow
 - **Shared storage**: every track (generated, uploaded, or assembled in the editor) is tracked in a centralized SQLite database and shared folder, available from every module — Demucs, MuScriptor and the editor all work off the same library instead of three separate ones.
 - **A DAW on top of generation**: a generated track isn't the end point, it's raw material — split it into stems, drag it onto a timeline, process it with effects, blend it with other tracks, and export.
 - **An AI arranger inside the DAW**: instead of re-rolling a whole song, build it up part by part — the model listens to the lanes you pick and writes drums, bass, strings or a new section that fit their tempo and key, as variants on their own lanes.
+- **From an idea**: describe a song in one phrase; a local language model writes the prompt in the chosen engine's own format (style tags, lyrics, tempo, key), you can edit it, and the engine makes the track.
 - **Built-in LoRA training**: not just generation — fine-tune ACE-Step on your own voice or style right from the browser, no console needed.
 - **Install only what you need**: the desktop installer lets you leave out YuE2, stem separation or the arranger's base models and add them later from the app; the header shows RAM and video memory and can unload the running model.
 
@@ -66,6 +68,7 @@ ACE-Step and YuE2 are two independent music generation engines, each with its ow
 | **YuE2-3B** | Full-length track generation with CoT score planning (a symbolic ABC plan before the audio). |
 | **SheetSage2** | Extracts melody and harmony from a reference track into ABC notation — used as YuE2's input. |
 | **Stable Audio 3** | Instrumentals and sound effects from a description in seconds (no vocals); in the editor's AI arranger it repaints, continues and covers by listening to the audio around the range. |
+| **From an idea** | One phrase in, a track out: a local language model (Qwen3.5) writes the prompt for ACE-Step, YuE2 or Stable Audio 3, you edit it if you like, and the engine generates. |
 | **LoRA training** | Dataset → auto-labeling → preprocessing → training → export — the whole ACE-Step fine-tuning pipeline for your own voice/style, in the browser. |
 | **Demucs** | Splits any track into 4 stems: vocals, drums, bass, other. |
 | **MuScriptor** | Transcribes audio (the full mix or a single stem) into MIDI notes. |
@@ -74,6 +77,20 @@ ACE-Step and YuE2 are two independent music generation engines, each with its ow
 | **Samples** | One-shots, loops at the project tempo and textures from a description (Stable Audio 3), auditioned in the editor and dropped onto a track. |
 
 The interface is fully bilingual (Russian/English). It starts in your system language, and the switcher in the header overrides it.
+
+---
+
+## From an idea
+
+The first tab in the header. Describe a song or an instrumental in your own words, pick an engine, and a local language model, the prompt assistant, writes the prompt in that engine's own format:
+
+- **ACE-Step**: a style caption, lyrics, tempo, key and length. While the engine runs, ACE-Step's own language model can write it instead: faster, but it strays further from the idea.
+- **YuE2** (songs): 5–9 style tags in English and lyrics split into sections, in the language of the idea or the one you pick.
+- **Stable Audio 3** (instrumentals): a prompt in its own tag style, written with Stable Audio's own instructions.
+
+While the prompt is written, the page shows the stage, an estimated percent, the text as it grows and a *Stop* button. The prompt then opens as editable fields. *Generate* starts the engine if needed and sends the job; the track is named after the idea and lands in the engine's feed. *Open in the form* puts the prompt into the engine's own page for the settings this page leaves out, and the form takes it as soon as the engine has started. The idea and the prompt stay when you leave the page and after a reload.
+
+The assistant is Qwen3.5 (0.8B, 2B by default, or 4B; Apache-2.0), downloaded and set up on the Models page. On *auto* it writes on the GPU while no engine runs and on the CPU otherwise: a song's lyrics take about 10 s on the GPU and up to a minute on the CPU. On *GPU* it unloads the running engine to write, and *Generate* swaps the engine back. It starts with the first request and stops after a set idle time.
 
 ---
 
@@ -104,7 +121,7 @@ Three **CoT (Chain-of-Thought)** modes: `off` — straight to audio; `melody` �
 
 ![LoRA training](docs/screenshots/en/04-lora-training.png)
 
-The full ACE-Step fine-tuning pipeline on your own dataset, no console required:
+The full ACE-Step fine-tuning pipeline on your own dataset, no console required. It is a tab on ACE-Step's page, next to *Generate*:
 
 1. **Dataset** — upload audio files straight from the browser (drag & drop) or point at an existing server folder, a trigger word, an "all tracks are instrumental" flag.
 2. **Automatic labeling** — LLM-generated description, genre, BPM/key, lyrics transcription/reformatting.
@@ -187,7 +204,7 @@ On the Stable Audio 3 page itself: a description per variant (an A/B of two prom
 
 ### Models and settings
 
-The gear in the header opens the **Models** page: for every engine the weights it can download and the settings it starts with. ACE-Step: the core bundle, the other DiT checkpoints (`sft`, `base`, the XL ones) and the 0.6B and 4B language models, plus which DiT and language model it starts with. YuE2: the shared weights and the `q8_0` / `q4_0` main models. Stable Audio 3: the six checkpoints with the Hugging Face token, the model warmed up at start, and samples on the CPU. Demucs: `htdemucs` or the fine-tuned, slower `htdemucs_ft`. The **From an idea** page (a card on the home page) takes one phrase, song or instrumental, and an engine: ACE-Step (style, lyrics, tempo, key, length), YuE2 for songs (style tags and sectioned lyrics) or Stable Audio 3 for instrumentals (a prompt in its own style). It has the prompt written, shows it for editing and starts the generation; the track is named after the idea. The prompt assistant: a local language model (Qwen3.5, Apache-2.0) that writes each engine's prompt from one phrase, with its model, device (auto: the GPU while no engine runs, else the CPU; GPU: a running engine is unloaded while it writes, and Generate swaps it back), and a box to try it. The engines are listed on the left with what their models take on disk; an optional part can be deleted again from its row (not while its engine runs). Downloads run in the background one at a time and can be stopped; a stopped one resumes. An engine's settings apply on its next start, and the page offers a restart when it runs with the old ones.
+The gear in the header opens the **Models** page: for every engine the weights it can download and the settings it starts with. ACE-Step: the core bundle, the other DiT checkpoints (`sft`, `base`, the XL ones) and the 0.6B and 4B language models, plus which DiT and language model it starts with. YuE2: the shared weights and the `q8_0` / `q4_0` main models. Stable Audio 3: the six checkpoints with the Hugging Face token, the model warmed up at start, and samples on the CPU. Demucs: `htdemucs` or the fine-tuned, slower `htdemucs_ft`. The prompt assistant of [From an idea](#from-an-idea): its model, the device (auto: the GPU while no engine runs, else the CPU; GPU: a running engine is unloaded while it writes, and *Generate* swaps it back), the idle time, and a box to try it with the same progress and *Stop*. The engines are listed on the left with what their models take on disk; an optional part can be deleted again from its row (not while its engine runs). Downloads run in the background one at a time and can be stopped; a stopped one resumes. An engine's settings apply on its next start, and the page offers a restart when it runs with the old ones.
 
 ## Architecture
 
@@ -208,8 +225,9 @@ Remiqora is a UI and orchestrator on top of third-party inference engines. Their
 | [audio.cpp](https://github.com/0xShug0/audio.cpp) (`dev` branch) | YuE2 (generation), SheetSage2 (melody extraction), MuScriptor (MIDI transcription) | Apache-2.0 |
 | [Demucs](https://github.com/adefossez/demucs) | Stem separation (`htdemucs`) | MIT |
 | [Stable Audio 3](https://github.com/Stability-AI/stable-audio-3) | Instrumentals and sound effects; inpainting, continuation and audio-to-audio in the arranger. Run through our own small server, `external/sa3-server` | Code MIT; weights under the [Stability AI Community License](https://stability.ai/community-license-agreement) (free below $1M annual revenue) plus the Gemma Terms of Use for the text encoder |
+| [Qwen3.5](https://huggingface.co/Qwen/Qwen3.5-2B) | The prompt assistant of *From an idea* (0.8B, 2B or 4B), run through our own small server, `external/prompt-assistant`. Stable Audio's prompt instructions in it come from Stable Audio 3's `reprompt.py` (MIT) | Apache-2.0 (code and weights) |
 
-Patch details and exact base commits are in [`external/patches/README.md`](external/patches/README.md).
+Patch details and exact base commits are in [`external/patches/README.md`](external/patches/README.md). Stable Audio 3 in Remiqora is **Powered by Stability AI**.
 
 The desktop app additionally uses [Electron](https://www.electronjs.org) (MIT), [electron-builder](https://www.electron.build) (MIT), [uv](https://docs.astral.sh/uv/) (MIT or Apache-2.0) and static FFmpeg builds (GPL) that it downloads on first launch instead of redistributing.
 
@@ -217,12 +235,14 @@ The desktop app additionally uses [Electron](https://www.electronjs.org) (MIT), 
 
 ## License & liability for generated content
 
-Remiqora's own code (this repository) is [MIT-licensed](LICENSE). That covers the UI and orchestrator only — it is a separate thing from the license of a *track* you generate with it. Remiqora is an orchestrator, not a generator with its own model — all audio is produced by third-party engines (ACE-Step 1.5, YuE2-3B, and the SheetSage2/MuScriptor tools built on top of them). Because of that:
+Remiqora's own code (this repository) is [MIT-licensed](LICENSE). That covers the UI and orchestrator only — it is a separate thing from the license of a *track* you generate with it. Remiqora is an orchestrator, not a generator with its own model — all audio is produced by third-party engines (ACE-Step 1.5, YuE2-3B, Stable Audio 3, and the SheetSage2/MuScriptor tools built on top of them). Because of that:
 
 - **The author of Remiqora takes no responsibility** for what happens to tracks generated through this app afterward — commercial or otherwise, published or private. Whatever you create, and how you use it next, is entirely your own responsibility.
 - **A generated track is covered by the license of whichever model produced it**, not by a license from this repository. The table above lists the *code* license — the *model weights* can be licensed differently:
   - **ACE-Step 1.5** — both the code and the model weights are MIT-licensed, and the model's authors explicitly state the generated music can be used commercially.
   - **YuE2-3B** — the model weights (unlike audio.cpp's own Apache-2.0 *code*) are distributed under **CC BY-NC 4.0**. That means tracks generated through YuE2 **cannot be used commercially** without separate permission from the rights holder, and attribution is required for any use.
+  - **Stable Audio 3** — the code is MIT, the weights are under the [Stability AI Community License](https://stability.ai/community-license-agreement). It allows commercial use, the generated audio included, for individuals and organizations with under US $1M in annual revenue (counted together with affiliates); commercial use requires a free registration with Stability AI, and above that revenue a separate license from Stability AI is needed. You own the outputs as far as the law allows, but they may not be used to create or improve other foundation generative models. The text encoder also falls under the Gemma Terms of Use.
+  - **The prompt assistant** (Qwen3.5, Apache-2.0) writes only text prompts, not audio; its license places no terms on what it writes.
 - Before publishing, monetizing, or otherwise distributing a generated track, **check the current license terms of that specific model** on its HuggingFace/weights page — those terms belong to the model's own rights holder and can change independently of this repository.
 - Remiqora is provided "as is", with no warranty of any kind. By using it, you accept that verifying a generated track's compliance with applicable law and with the license of the model that produced it is solely your responsibility.
 - **Attribution**: if you fork, copy, or build on Remiqora's code, keep the credit — a link back to this repository and to Nikolay Cherkashin ([inikolax](https://github.com/inikolax)) as the original author. The MIT license above already requires keeping the copyright notice in any copy; this is just that requirement spelled out plainly.
@@ -237,7 +257,7 @@ There are two ways to install Remiqora: the **desktop app** (experimental, descr
 
 For anyone who would rather not use a terminal, Remiqora also comes as a **desktop app** for **Windows** (NVIDIA RTX 20-series or newer, driver 580 or newer) and **macOS** (Apple Silicon). It opens in its own window and sets everything up on the first launch, so there is no Git, Python, CUDA Toolkit or compiler to install. The Windows installer installs per user and needs no administrator rights.
 
-**Download (v0.3.0, pre-release):** [Windows installer (.exe)](https://github.com/inikolax/remiqora/releases/download/v0.3.0/Remiqora-Setup-0.3.0.exe) · [macOS installer (.dmg, Apple Silicon)](https://github.com/inikolax/remiqora/releases/download/v0.3.0/Remiqora-0.3.0-arm64.dmg) · [all files and SHA-256 sums](https://github.com/inikolax/remiqora/releases/tag/v0.3.0)
+**Download (v0.4.0, pre-release):** [Windows installer (.exe)](https://github.com/inikolax/remiqora/releases/download/v0.4.0/Remiqora-Setup-0.4.0.exe) · [macOS installer (.dmg, Apple Silicon)](https://github.com/inikolax/remiqora/releases/download/v0.4.0/Remiqora-0.4.0-arm64.dmg) · [all files and SHA-256 sums](https://github.com/inikolax/remiqora/releases/tag/v0.4.0)
 
 <p align="center">
   <img src="docs/screenshots/en/12-desktop-check.png" alt="First launch: the app checks the GPU, driver, free space and connection, asks where to keep models and projects, and what to install" width="48%">
@@ -248,6 +268,7 @@ For anyone who would rather not use a terminal, Remiqora also comes as a **deskt
   - **YuE2** (about 8.5 GB): the audio.cpp engine (CUDA on Windows, Metal on macOS), YuE2, SheetSage2 and MuScriptor. Its precision is a choice too — `q8_0` sounds better and needs about 9 GB of video memory, `q4_0` (2.7 GB) is for cards with 8 GB or less and is picked by default on such a card;
   - **Stem separation** (Demucs, about 4.5 GB);
   - **Stable Audio 3** (about 4.5 GB, off by default): its Python environment. A model (3.5 GB for a small one, 10.4 GB for `medium`) is downloaded afterwards on its page in the app, since the weights are gated on Hugging Face;
+  - **Prompt assistant** (about 4 GB, off by default) for *From an idea*: its Python environment, mostly shared with Stable Audio 3's when both are picked. Its model (Qwen3.5-2B, about 4.6 GB) is downloaded afterwards on the Models page;
   - **ACE-Step base model** (about 4.8 GB) for adding parts with the AI arranger;
   - **ACE-Step XL base model** (about 20 GB), off by default, with a warning when the card has less than 16 GB.
 
