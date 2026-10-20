@@ -16,9 +16,11 @@ export default {
   header: {
     models: 'Models and settings',
     editor: 'Editor',
+    idea: 'From an idea',
     lora: 'LoRA',
     loraTitle: 'LoRA training for ACE-Step',
     desc: {
+      idea: 'The assistant writes the prompt',
       ace: 'Songs, covers, remixes',
       lora: 'Your style for ACE-Step',
       yue: 'Whole songs with vocals',
