@@ -13,8 +13,8 @@ import SparklesIcon from './icons/SparklesIcon.vue'
 import PulseIcon from './icons/PulseIcon.vue'
 
 defineProps<{ open: boolean }>()
-/** open-guide: the editor's own guide or the AI arranger's, shown by the header in place of this one. */
-const emit = defineEmits<{ close: []; 'open-guide': [which: 'editor' | 'arranger'] }>()
+/** open-guide: the editor's own guide, the AI arranger's or From an idea's, shown by the header in place of this one. */
+const emit = defineEmits<{ close: []; 'open-guide': [which: 'editor' | 'arranger' | 'idea'] }>()
 const { t, tm } = useI18n()
 const router = useRouter()
 
@@ -22,14 +22,15 @@ interface Step { title: string; text: string }
 interface Row { label: string; ace: string; yue: string; sa3: string }
 
 const SECTIONS = [
+  { key: 'idea', to: '/idea', icon: SparklesIcon, title: '' },
   { key: 'ace', to: '/ace-step', icon: WaveIcon, title: 'ACE-Step 1.5' },
   { key: 'lora', to: '/ace-step/lora', icon: TargetIcon, title: 'LoRA' },
   { key: 'yue', to: '/yue2', icon: MicIcon, title: 'YuE2-3B' },
   { key: 'sa3', to: '/stable-audio', icon: PulseIcon, title: 'Stable Audio 3' },
   { key: 'editor', to: '/editor', icon: TimelineIcon, title: '' },
 ] as const
-/** The detail sections, in the order a track travels: made, trained for, split, mixed, arranged, kept. */
-const DETAILS = ['ace', 'yue', 'sa3', 'lora', 'stems', 'editor', 'arranger', 'sfx', 'library'] as const
+/** The detail sections, in the order a track travels: thought of, made, trained for, split, mixed, arranged, kept. */
+const DETAILS = ['idea', 'ace', 'yue', 'sa3', 'lora', 'stems', 'editor', 'arranger', 'sfx', 'library'] as const
 const LIGHTS = [
   { key: 'stopped', cls: 'border border-text-dim/70' },
   { key: 'starting', cls: 'bg-status-queued animate-pulse' },
@@ -56,7 +57,7 @@ function go(to: string) {
             <component :is="s.icon" class="mt-0.5 h-[18px] w-[18px] shrink-0 text-accent1" />
             <div class="min-w-0 flex-1">
               <div class="flex items-baseline justify-between gap-3">
-                <p class="font-medium text-text">{{ s.title || t('header.editor') }}</p>
+                <p class="font-medium text-text">{{ s.title || t(s.key === 'idea' ? 'header.idea' : 'header.editor') }}</p>
                 <button type="button" class="shrink-0 text-xs text-accent1 hover:underline" @click="go(s.to)">{{ t('header.guide.goTo') }}</button>
               </div>
               <p class="text-xs text-text-dim">{{ t(`header.desc.${s.key}`) }}</p>
@@ -125,15 +126,15 @@ function go(to: string) {
         <section v-for="id in DETAILS" :key="id">
           <h4 class="mb-1.5 text-sm font-semibold text-text">{{ t(`header.helpSections.${id}.title`) }}</h4>
           <p>{{ t(`header.helpSections.${id}.text`) }}</p>
-          <!-- the editor and the arranger have guides of their own -->
+          <!-- the editor, the arranger and From an idea have guides of their own -->
           <button
-            v-if="id === 'editor' || id === 'arranger'"
+            v-if="id === 'editor' || id === 'arranger' || id === 'idea'"
             type="button"
             class="mt-2.5 inline-flex items-center gap-1.5 rounded-lg border border-accent1/40 px-3 py-1.5 text-sm text-accent1 hover:bg-accent1/10"
             @click="emit('open-guide', id)"
           >
             <component :is="id === 'editor' ? TimelineIcon : SparklesIcon" class="h-4 w-4" />
-            {{ t(id === 'editor' ? 'header.guide.editorGuide' : 'header.guide.arrangerGuide') }}
+            {{ t(id === 'editor' ? 'header.guide.editorGuide' : id === 'idea' ? 'header.guide.ideaGuide' : 'header.guide.arrangerGuide') }}
           </button>
         </section>
       </div>

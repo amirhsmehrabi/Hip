@@ -29,6 +29,8 @@ import { useStableAudioStore } from '../../stores/stableAudio'
 import { guessVocalLanguage, VOCAL_LANGUAGES } from '../../utils/vocalLanguages'
 import ChipGroup from '../../components/shared/ChipGroup.vue'
 import PromptProgress from '../../components/shared/PromptProgress.vue'
+import HelpIconButton from '../../components/shared/HelpIconButton.vue'
+import IdeaGuide from '../../components/idea/IdeaGuide.vue'
 import MicIcon from '../../components/shared/icons/MicIcon.vue'
 import PulseIcon from '../../components/shared/icons/PulseIcon.vue'
 import SparklesIcon from '../../components/shared/icons/SparklesIcon.vue'
@@ -314,12 +316,16 @@ async function startAce() {
 onMounted(() => {
   void engines.load()
 })
+const guideOpen = ref(false)
 </script>
 
 <template>
   <div class="mx-auto max-w-3xl">
     <header>
-      <h1 class="text-2xl font-semibold text-text">{{ t('idea.title') }}</h1>
+      <h1 class="flex items-center gap-2 text-2xl font-semibold text-text">
+        {{ t('idea.title') }}
+        <HelpIconButton class="mt-1" @click="guideOpen = true" />
+      </h1>
       <p class="mt-1 text-sm leading-relaxed text-text-dim">{{ t('idea.lead') }}</p>
     </header>
 
@@ -478,5 +484,7 @@ onMounted(() => {
         <p v-if="!engineRunning(draft.engine) && orchestrator.activeModel && orchestrator.activeModel !== engineInfo.model" class="-mt-2 text-right text-[11px] text-text-dim">{{ t('aiPart.engineSwitchNote', { running: MODEL_LABELS[orchestrator.activeModel] }) }}</p>
       </div>
     </section>
+
+    <IdeaGuide :open="guideOpen" @close="guideOpen = false" />
   </div>
 </template>

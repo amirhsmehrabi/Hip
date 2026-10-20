@@ -11,6 +11,7 @@ import AppHelpModal from './AppHelpModal.vue'
 import EditorHelpModal from '../editor/EditorHelpModal.vue'
 import EditorHotkeysModal from '../editor/EditorHotkeysModal.vue'
 import AiArrangerGuide from '../editor/AiArrangerGuide.vue'
+import IdeaGuide from '../idea/IdeaGuide.vue'
 import ResourceMeters from './ResourceMeters.vue'
 import MicIcon from './icons/MicIcon.vue'
 import TimelineIcon from './icons/TimelineIcon.vue'
@@ -26,9 +27,9 @@ const onIdea = computed(() => route.name === 'idea')
 const { selectModel } = useModelSwitch()
 const { t, locale } = useI18n()
 const helpOpen = ref(false)
-/** A guide opened from the help: the editor's, its shortcut sheet, or the AI arranger's. */
-const guide = ref<'editor' | 'hotkeys' | 'arranger' | null>(null)
-function openGuide(which: 'editor' | 'arranger') {
+/** A guide opened from the help: the editor's, its shortcut sheet, the AI arranger's or From an idea's. */
+const guide = ref<'editor' | 'hotkeys' | 'arranger' | 'idea' | null>(null)
+function openGuide(which: 'editor' | 'arranger' | 'idea') {
   helpOpen.value = false
   guide.value = which
 }
@@ -257,5 +258,6 @@ async function onSelect(id: ModelId) {
     <EditorHelpModal :show="guide === 'editor'" @close="guide = null" @open-guide="guide = 'arranger'" @open-hotkeys="guide = 'hotkeys'" />
     <EditorHotkeysModal :show="guide === 'hotkeys'" @close="guide = null" />
     <AiArrangerGuide :open="guide === 'arranger'" @close="guide = null" />
+    <IdeaGuide :open="guide === 'idea'" @close="guide = null" />
   </header>
 </template>
