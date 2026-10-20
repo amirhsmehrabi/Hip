@@ -8,6 +8,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from .. import sa3_weights
+from ..orchestrator.manager import manager
+from ..orchestrator.state import ModelStatus
+from ..sfx_cpu import sampler
 
 router = APIRouter(prefix="/api/sa3-weights", tags=["stable-audio"])
 
@@ -37,6 +40,18 @@ async def start_download(model: str) -> dict:
 @router.post("/{model}/cancel")
 async def cancel_download(model: str) -> dict:
     await sa3_weights.cancel(model)
+    return await asyncio.to_thread(sa3_weights.snapshot)
+
+
+@router.delete("/{model}")
+async def delete_model(model: str) -> dict:
+    running = manager.state.models["stable_audio"].status != ModelStatus.STOPPED or sampler.status in ("running", "starting")
+    try:
+        await sa3_weights.delete(model, running)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return await asyncio.to_thread(sa3_weights.snapshot)
 
 

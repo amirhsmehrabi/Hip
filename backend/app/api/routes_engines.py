@@ -10,8 +10,9 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from .. import engine_parts, engine_settings, features
+from .. import engine_parts, engine_settings, features, sa3_weights
 from ..orchestrator.manager import manager
+from ..orchestrator.state import ModelStatus
 from ..sfx_cpu import BASE_URL as CPU_BASE_URL
 from ..sfx_cpu import CPU_MODELS, Settings, sampler, save_settings
 from .routes_proxy import _proxy_to
@@ -39,11 +40,32 @@ def _engine(engine: str) -> dict:
     if engine in ("ace_step", "yue2"):
         out["ready"] = engine_parts.engine_ready(engine)
         out["parts"] = engine_parts.snapshot(engine)
+        out["on_disk"] = engine_parts.engine_bytes(engine)
     elif engine == "demucs":
         out["ready"] = features.has_demucs()
+        out["on_disk"] = _demucs_bytes()
     elif engine == "stable_audio":
         out["ready"] = features.has_stable_audio_env()
+        out["on_disk"] = sa3_weights.total_bytes()
     return out
+
+
+def _demucs_bytes() -> int:
+    """Demucs keeps its models in torch's hub cache (TORCH_HOME, or the default under the profile)."""
+    import os
+    from pathlib import Path
+
+    home = Path(os.getenv("TORCH_HOME") or Path.home() / ".cache" / "torch")
+    folder = home / "hub" / "checkpoints"
+    total = 0
+    if folder.is_dir():
+        for f in folder.iterdir():
+            if "demucs" in f.name.lower():
+                try:
+                    total += f.stat().st_size
+                except OSError:
+                    pass
+    return total
 
 
 def _snapshot() -> dict:
@@ -74,6 +96,23 @@ async def download_part(part: str) -> dict:
         raise HTTPException(404, f"unknown part {part}") from exc
     except (RuntimeError, FileNotFoundError) as exc:
         raise HTTPException(409, str(exc)) from exc
+    return await asyncio.to_thread(_snapshot)
+
+
+@router.delete("/engines/parts/{part}")
+async def delete_part(part: str) -> dict:
+    p = engine_parts.PARTS.get(part)
+    if p is None:
+        raise HTTPException(404, f"unknown part {part}")
+    running = manager.state.models[p.engine].status != ModelStatus.STOPPED
+    try:
+        await engine_parts.delete(part, running)
+    except PermissionError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(500, f"could not delete: {exc}") from exc
     return await asyncio.to_thread(_snapshot)
 
 

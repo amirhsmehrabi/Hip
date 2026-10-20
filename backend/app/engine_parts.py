@@ -4,11 +4,15 @@ Each part is fetched by the engine's own tool, the way the installers do it: ACE
 (Hugging Face, ModelScope as its fallback) and audio.cpp's `tools/model_manager_v2.py install <package>`.
 Neither reports byte counts, so progress is the growth of the folder the part lands in against its known size.
 One download at a time; stopping kills the tool, and the next run picks up what it left.
+
+Optional parts can be deleted again (an ACE-Step checkpoint folder; a YuE2 precision through the model manager's
+`uninstall`, which leaves the files other packages share), but not while their engine runs: it has the files open.
 """
 from __future__ import annotations
 
 import asyncio
 import os
+import shutil
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -29,10 +33,13 @@ class Part:
     # what it is, for grouping on the page: the main bundle, a DiT, a language model, a YuE2 precision, shared weights
     kind: str
     bytes: int
-    folder: Path
+    # where it lands: the download's progress is the growth of the first one; all of them count on disk
+    folders: tuple[Path, ...]
     installed: Callable[[], bool]
     commands: Callable[[], list[tuple[list[str], Path]]]
     required: bool = False
+    # how it is removed: a folder to delete, or a YuE2 package to uninstall
+    remove: Optional[Callable[[], list[str]]] = None
 
 
 def _ace(model: Optional[str]) -> Callable[[], list[tuple[list[str], Path]]]:
@@ -78,16 +85,74 @@ def _add(p: Part) -> None:
 
 
 # ACE-Step: the main bundle (turbo DiT, the 1.7B language model, the VAE and the text encoder) and the extras.
-_add(Part("ace-main", "ace_step", "main", 9_400_000_000, _CKPT, _ace_main_installed, _ace(None), required=True))
+_ACE_MAIN_FOLDERS = tuple(_CKPT / n for n in ("acestep-v15-turbo", "acestep-5Hz-lm-1.7B", "vae", "Qwen3-Embedding-0.6B"))
+_add(Part("ace-main", "ace_step", "main", 9_400_000_000, _ACE_MAIN_FOLDERS, _ace_main_installed, _ace(None), required=True))
 for _name, _size in _ACE_SIZES.items():
-    _add(Part(_name, "ace_step", "lm" if "-lm-" in _name else "dit", _size, _CKPT / _name,
-              (lambda n=_name: engine_settings.ace_checkpoint_ready(n)), _ace(_name)))
+    _add(Part(_name, "ace_step", "lm" if "-lm-" in _name else "dit", _size, (_CKPT / _name,),
+              (lambda n=_name: engine_settings.ace_checkpoint_ready(n)), _ace(_name), remove=(lambda n=_name: _rm_folder(_CKPT / n))))
 # YuE2: the shared weights (VAE, SheetSage2, MuScriptor) and one main model per precision.
-_add(Part("yue2-common", "yue2", "common", 3_390_000_000, YUE2_MODEL_PATH.parent, _yue2_common_installed,
+_add(Part("yue2-common", "yue2", "common", 3_390_000_000,
+          (YUE2_MODEL_PATH / "yue2-vae-f16.gguf", SHEETSAGE_MODEL_PATH, MUSCRIPTOR_MODEL_PATH), _yue2_common_installed,
           _yue2("yue2_vae_f16", "sheetsage2_orig", "muscriptor_small_f32"), required=True))
 for _p, _size in (("q8_0", 4_260_000_000), ("q4_0", 2_670_000_000)):
-    _add(Part(f"yue2-{_p}", "yue2", "precision", _size, YUE2_MODEL_PATH,
-              (lambda p=_p: p in features.yue2_precisions()), _yue2(f"yue2_main_{_p}")))
+    _add(Part(f"yue2-{_p}", "yue2", "precision", _size, (YUE2_MODEL_PATH / f"yue2-3b-{_p}.gguf",),
+              (lambda p=_p: p in features.yue2_precisions()), _yue2(f"yue2_main_{_p}"),
+              remove=(lambda p=_p: [f"yue2_main_{p}"])))
+
+
+def _rm_folder(path: Path) -> list[str]:
+    shutil.rmtree(path, ignore_errors=False)
+    return []
+
+
+def _size(path: Path) -> int:
+    """Bytes under a folder, or of one file; 0 where it is missing or unreadable."""
+    try:
+        if path.is_file():
+            return path.stat().st_size
+    except OSError:
+        return 0
+    return _dir_size(path)
+
+
+def part_bytes(part: Part) -> int:
+    return sum(_size(p) for p in part.folders)
+
+
+def engine_bytes(engine: str) -> int:
+    """What the engine's models take: ACE-Step's checkpoints folder, YuE2's models folder."""
+    if engine == "ace_step":
+        return _size(_CKPT)
+    if engine == "yue2":
+        return _size(YUE2_MODEL_PATH.parent)
+    return 0
+
+
+async def delete(part_id: str, engine_running: bool) -> None:
+    part = PARTS.get(part_id)
+    if part is None:
+        raise KeyError(part_id)
+    if part.required or part.remove is None:
+        raise PermissionError("the engine needs this part")
+    if engine_running:
+        raise RuntimeError("stop the engine first: it holds the files open")
+    if active() == part_id:
+        raise RuntimeError("it is downloading; stop the download first")
+    if part.engine == "ace_step":
+        used = set(engine_settings.get("ace_step").values())
+        if part_id in used:
+            raise PermissionError("it is the model ACE-Step starts with; pick another in the settings first")
+    if part.engine == "yue2" and features.yue2_precisions() == [part_id.removeprefix("yue2-")]:
+        raise PermissionError("it is the only YuE2 precision; YuE2 needs one")
+    packages = await asyncio.to_thread(part.remove)
+    for pkg in packages:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, str(Path("tools") / "model_manager_v2.py"), "uninstall", pkg,
+            cwd=str(YUE2_DIR), stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        out, _ = await proc.communicate()
+        if proc.returncode != 0:
+            raise RuntimeError(out.decode("utf-8", "replace").strip().splitlines()[-1] if out else f"uninstall exited with {proc.returncode}")
+    _downloads.pop(part_id, None)
 
 
 def engine_ready(engine: str) -> bool:
@@ -136,8 +201,9 @@ def snapshot(engine: str) -> list[dict]:
         d = _downloads.get(p.id)
         running = d is not None and d.status == "running"
         out.append({
-            "id": p.id, "kind": p.kind, "bytes": p.bytes, "required": p.required,
+            "id": p.id, "kind": p.kind, "bytes": p.bytes, "required": p.required, "deletable": p.remove is not None,
             "installed": not running and p.installed(),
+            "on_disk": part_bytes(p),
             "download": None if d is None else {"status": d.status, "done": d.done, "total": d.total, "error": d.error},
         })
     return out
@@ -184,12 +250,13 @@ async def _run(part: Part, d: Download) -> None:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     log_path = LOG_DIR / "engine_downloads.log"
     # Not created here: acestep-download takes an existing folder for a finished download and skips it.
-    baseline = await asyncio.to_thread(_dir_size, part.folder)
+    watched = part.folders[0]
+    baseline = await asyncio.to_thread(_size, watched)
     stop = asyncio.Event()
 
     async def watch() -> None:
         while not stop.is_set():
-            grown = max(0, await asyncio.to_thread(_dir_size, part.folder) - baseline)
+            grown = max(0, await asyncio.to_thread(_size, watched) - baseline)
             d.done = min(grown, int(d.total * 0.99))
             try:
                 await asyncio.wait_for(stop.wait(), timeout=1.5)
