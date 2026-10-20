@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import sys
 from dataclasses import dataclass, field
 from typing import Literal, Optional
@@ -83,6 +84,37 @@ def has_token() -> bool:
         return False
 
 
+def repo_dir(name: str):
+    return features._hf_hub_dir() / f"models--stabilityai--stable-audio-3-{name}"
+
+
+def _dir_size(path) -> int:
+    total = 0
+    for root, _dirs, files in os.walk(path):
+        for f in files:
+            try:
+                total += os.lstat(os.path.join(root, f)).st_size
+            except OSError:
+                pass
+    return total
+
+
+def total_bytes() -> int:
+    return sum(_dir_size(repo_dir(n)) for n in MODELS)
+
+
+async def delete(model: str, engine_running: bool) -> None:
+    """Removes the checkpoint from the Hugging Face cache (its whole repo folder)."""
+    if model not in MODELS:
+        raise ValueError(f"unknown model '{model}'")
+    if engine_running:
+        raise RuntimeError("stop Stable Audio 3 first: it holds the files open")
+    if active() == model:
+        raise RuntimeError("it is downloading; stop the download first")
+    await asyncio.to_thread(shutil.rmtree, repo_dir(model), True)
+    _downloads.pop(model, None)
+
+
 def snapshot() -> dict:
     installed = set(features.stable_audio_models())
     models = []
@@ -96,6 +128,7 @@ def snapshot() -> dict:
             "base": name.endswith("-base"),
             "repo": f"stabilityai/stable-audio-3-{name}",
             "installed": name in installed and not running,
+            "on_disk": _dir_size(repo_dir(name)),
             "download": None if d is None else {
                 "status": d.status, "done": d.done, "total": d.total or meta["bytes"], "error": d.error, "code": d.code,
             },

@@ -11,7 +11,11 @@ export interface EnginePart {
   kind: 'main' | 'dit' | 'lm' | 'common' | 'precision'
   bytes: number
   required: boolean
+  /** Can be removed again from the Models page (not while its engine runs). */
+  deletable: boolean
   installed: boolean
+  /** What it takes on disk now; a partial download counts too. */
+  on_disk: number
   download: { status: 'running' | 'done' | 'failed' | 'cancelled'; done: number; total: number; error: string | null } | null
 }
 
@@ -26,6 +30,8 @@ export interface EngineInfo {
   /** The settings the running engine was started with; they differ from `settings` until its next start. */
   started?: Record<string, string> | null
   parts?: EnginePart[]
+  /** What the engine's models take on disk. */
+  on_disk?: number
 }
 
 export interface EnginesState {
@@ -38,6 +44,7 @@ export const getEngines = () => apiFetch<EnginesState>('/api/engines')
 export const saveEngineSettings = (engine: EngineId, values: Record<string, string>) =>
   apiJson<EnginesState>(`/api/engines/${engine}/settings`, values, 'PUT')
 export const downloadPart = (id: string) => apiFetch<EnginesState>(`/api/engines/parts/${encodeURIComponent(id)}/download`, { method: 'POST' })
+export const deletePart = (id: string) => apiFetch<EnginesState>(`/api/engines/parts/${encodeURIComponent(id)}`, { method: 'DELETE' })
 export const cancelPart = (id: string) => apiFetch<EnginesState>(`/api/engines/parts/${encodeURIComponent(id)}/cancel`, { method: 'POST' })
 
 export interface CpuSamplerSettings {

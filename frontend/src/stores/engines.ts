@@ -4,6 +4,8 @@ import type { CpuSampler, CpuSamplerSettings, EngineId, EnginesState } from '../
 import { useFeaturesStore } from './features'
 
 const TICK_MS = 1500
+/** While the Models page is open and nothing downloads: a download or a deletion made elsewhere still shows up. */
+const IDLE_TICK_MS = 10000
 
 /**
  * The Models page's state: the engines' parts and settings, and the CPU sample server. A part download runs in the
@@ -15,6 +17,8 @@ export const useEnginesStore = defineStore('engines', {
     cpu: null as CpuSampler | null,
     loadError: null as string | null,
     _timer: null as ReturnType<typeof setTimeout> | null,
+    /** Pages that want the slow refresh (the Models page while it is open). */
+    _watchers: 0,
   }),
   actions: {
     async load() {
@@ -34,6 +38,10 @@ export const useEnginesStore = defineStore('engines', {
     },
     async cancel(part: string) {
       this._apply(await api.cancelPart(part))
+    },
+    async remove(part: string) {
+      this._apply(await api.deletePart(part))
+      void useFeaturesStore().refresh()
     },
     async saveSettings(engine: EngineId, values: Record<string, string>) {
       this._apply(await api.saveEngineSettings(engine, values))
@@ -59,12 +67,22 @@ export const useEnginesStore = defineStore('engines', {
       const landed = Object.values(next.engines).some((e) => (e.parts ?? []).some((p) => p.installed && !before.has(p.id)))
       if (prev && landed) void useFeaturesStore().refresh()
     },
+    /** The Models page is open: keep the state fresh even when nothing downloads. */
+    watch() {
+      this._watchers++
+      this._follow()
+    },
+    unwatch() {
+      this._watchers = Math.max(0, this._watchers - 1)
+    },
     _follow() {
-      if (this._timer || !this.state?.downloading) return
+      if (this._timer) return
+      const downloading = !!this.state?.downloading
+      if (!downloading && this._watchers === 0) return
       this._timer = setTimeout(async () => {
         this._timer = null
         await this.load()
-      }, TICK_MS)
+      }, downloading ? TICK_MS : IDLE_TICK_MS)
     },
   },
 })

@@ -37,6 +37,9 @@ export const useSa3WeightsStore = defineStore('sa3Weights', {
     async cancel(model: Sa3ModelId) {
       this._apply(await api.cancelDownload(model))
     },
+    async remove(model: Sa3ModelId) {
+      this._apply(await api.deleteModel(model))
+    },
     async saveToken(token: string): Promise<api.Sa3TokenResult> {
       const r = await api.saveToken(token)
       if (r.ok) await this.load()

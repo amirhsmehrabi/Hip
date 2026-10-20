@@ -16,6 +16,8 @@ export interface Sa3WeightModel {
   base: boolean
   repo: string
   installed: boolean
+  /** What its cache folder takes on disk now. */
+  on_disk: number
   /** The last download from the app since the backend started, if any. */
   download: { status: Sa3DownloadStatus; done: number; total: number; error: string | null; code: Sa3DownloadError | null } | null
 }
@@ -45,6 +47,11 @@ export function startDownload(model: Sa3ModelId): Promise<Sa3Weights> {
 
 export function cancelDownload(model: Sa3ModelId): Promise<Sa3Weights> {
   return apiFetch<Sa3Weights>(`/api/sa3-weights/${model}/cancel`, { method: 'POST' })
+}
+
+/** Removes the checkpoint from the Hugging Face cache; refused while Stable Audio 3 runs. */
+export function deleteModel(model: Sa3ModelId): Promise<Sa3Weights> {
+  return apiFetch<Sa3Weights>(`/api/sa3-weights/${model}`, { method: 'DELETE' })
 }
 
 export function saveToken(token: string): Promise<Sa3TokenResult> {
