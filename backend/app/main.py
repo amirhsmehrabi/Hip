@@ -56,9 +56,15 @@ if FRONTEND_DIST_DIR.exists():
     # from dist/ when one exists at that path (hashed JS/CSS under /assets,
     # favicon, etc.), otherwise falls back to index.html for the Vue router
     # to handle client-side (so a hard refresh on /ace-step still works).
+    # index.html must be revalidated on every load: without Cache-Control
+    # Chromium caches it heuristically, and since the desktop app keeps the same
+    # port (= origin) across upgrades, the window could keep showing the old UI.
+    # Everything under /assets has a content hash in its name and stays cacheable.
+    INDEX_HEADERS = {"Cache-Control": "no-cache"}
+
     @app.get("/{full_path:path}")
     async def spa_fallback(full_path: str):
         candidate = FRONTEND_DIST_DIR / full_path
-        if full_path and candidate.is_file():
+        if full_path and candidate.is_file() and candidate.name != "index.html":
             return FileResponse(candidate)
-        return FileResponse(FRONTEND_DIST_DIR / "index.html")
+        return FileResponse(FRONTEND_DIST_DIR / "index.html", headers=INDEX_HEADERS)
