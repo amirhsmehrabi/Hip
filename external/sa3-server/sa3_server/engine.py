@@ -39,18 +39,40 @@ class Engine:
     def loading(self) -> str | None:
         return self._loading
 
-    def _disable_flash_attention_off_cuda(self) -> None:
+    def _disable_flash_attention_if_unusable(self) -> None:
         """Stable Audio picks Flash Attention whenever the package imports, whatever the device; its kernels
-        exist only for CUDA, so on a CPU (or MPS) every attention call would fail. Clearing the module's
-        handles makes it fall back to PyTorch's own attention (SDPA)."""
-        if self.device_name() == "cuda":
-            return
+        exist only for CUDA, so on a CPU (or MPS) every attention call would fail. A prebuilt wheel also
+        carries kernels only for the GPU generations it was compiled for (the Windows one: sm_89 only), so
+        on another card the first call fails with "no kernel image". Clearing the module's handles makes it
+        fall back to PyTorch's own attention (SDPA)."""
         from stable_audio_3.models import transformer
 
+        if transformer.__dict__.get("flash_attn_func") is None:
+            return
+        if self.device_name() == "cuda":
+            reason = self._flash_attention_probe()
+            if reason is None:
+                return
+        else:
+            reason = "no CUDA"
         for attr in ("flash_attn_func", "flash_attn_kvpacked_func", "flash_attn_varlen_func"):
             if getattr(transformer, attr, None) is not None:
                 setattr(transformer, attr, None)
-                log.info("%s: Flash Attention off (no CUDA)", attr)
+        log.warning("Flash Attention off (%s), using PyTorch attention", reason)
+
+    @staticmethod
+    def _flash_attention_probe() -> str | None:
+        """Run one tiny Flash Attention call on the GPU; None if it works, else why it does not."""
+        from stable_audio_3.models import transformer
+
+        try:
+            q = torch.zeros(1, 16, 1, 64, device="cuda", dtype=torch.float16)
+            transformer.flash_attn_func(q, q, q)
+            torch.cuda.synchronize()
+            return None
+        except Exception as exc:  # noqa: BLE001 - any failure means the kernels cannot be used here
+            major, minor = torch.cuda.get_device_capability()
+            return f"sm_{major}{minor}: {str(exc).splitlines()[0]}"
 
     def load(self, name: str) -> Any:
         if name not in MODEL_SPECS:
@@ -72,7 +94,7 @@ class Engine:
                 self._free()
             from stable_audio_3 import StableAudioModel
 
-            self._disable_flash_attention_off_cuda()
+            self._disable_flash_attention_if_unusable()
 
             self._loading = name
             t0 = time.time()
