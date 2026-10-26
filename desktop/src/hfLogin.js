@@ -2,7 +2,7 @@
 // "Sign in with Hugging Face" for the gated Stable Audio 3 checkpoints, as a native app does it (RFC 8252):
 // the system browser opens Hugging Face's consent page, which sends the user back to a one-off server on
 // 127.0.0.1 with a code, and the code plus a PKCE verifier buys an access token. No client secret: the app's
-// client id is the URL of its metadata document on remiqora.com (docs/.well-known/oauth-cimd), which lists the
+// client id is the URL of its metadata document on remiqora.com (.well-known/oauth-cimd in the site repo inikolax/remiqora-site), which lists the
 // loopback redirect; Hugging Face accepts any port on it. The `gated-repos` scope reads public gated repos the
 // user was granted, and nothing private. The licence of each model is still accepted on its page.
 const http = require('node:http');
