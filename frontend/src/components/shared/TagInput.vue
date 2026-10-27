@@ -136,7 +136,7 @@ function selectSuggestion(s: string): void {
         v-for="(s, i) in suggestions"
         :key="s"
         type="button"
-        class="block w-full px-2.5 py-1.5 text-left text-xs"
+        class="block w-full px-2.5 py-1.5 text-start text-xs"
         :class="i === highlighted ? 'bg-panel-2 text-text' : 'text-text hover:bg-panel-2'"
         @mousedown.prevent="selectSuggestion(s)"
       >

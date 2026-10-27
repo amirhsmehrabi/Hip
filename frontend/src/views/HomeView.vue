@@ -91,7 +91,7 @@ async function onPick(id: ModelId) {
         <span class="block text-lg font-semibold text-text">{{ t('home.idea.title') }}</span>
         <span class="mt-0.5 block text-sm text-text-dim">{{ t('home.idea.text') }}</span>
       </span>
-      <span class="hidden shrink-0 text-sm font-medium text-accent1 transition-transform group-hover:translate-x-0.5 sm:inline">{{ t('home.idea.go') }} →</span>
+      <span class="hidden shrink-0 text-sm font-medium text-accent1 transition-transform group-hover:translate-x-0.5 rtl:group-hover:-translate-x-0.5 sm:inline">{{ t('home.idea.go') }} <span class="inline-block rtl:-scale-x-100" aria-hidden="true">→</span></span>
     </router-link>
 
     <div class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -99,7 +99,7 @@ async function onPick(id: ModelId) {
         v-for="id in MODEL_IDS"
         :key="id"
         type="button"
-        class="rounded-xl border border-border bg-panel p-5 text-left transition-colors hover:border-accent1/60"
+        class="rounded-xl border border-border bg-panel p-5 text-start transition-colors hover:border-accent1/60"
         @click="onPick(id)"
       >
         <div class="flex items-center gap-2">

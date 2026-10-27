@@ -30,7 +30,7 @@ async function start() {
           <span class="h-2 w-2 shrink-0 rounded-full" :class="status === 'error' ? 'bg-status-failed' : 'bg-gray-500'"></span>
           {{ t('offlineBanner.notRunning', { model: MODEL_LABELS[modelId] }) }}
         </p>
-        <button type="button" class="accent-gradient rounded-lg px-3 py-1.5 text-sm font-medium text-white sm:ml-auto" @click="start">{{ t('offlineBanner.start', { model: MODEL_LABELS[modelId] }) }}</button>
+        <button type="button" class="accent-gradient rounded-lg px-3 py-1.5 text-sm font-medium text-white sm:ms-auto" @click="start">{{ t('offlineBanner.start', { model: MODEL_LABELS[modelId] }) }}</button>
       </template>
     </div>
     <p v-if="status === 'error' && error" class="mt-2 whitespace-pre-line rounded-lg bg-status-failed/10 p-3 text-xs text-status-failed">{{ error }}</p>

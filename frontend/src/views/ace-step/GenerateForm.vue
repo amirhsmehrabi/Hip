@@ -488,7 +488,7 @@ async function submit() {
           <HelpIconButton @click="helpOpen = 'remix'" />
         </label>
         <div v-if="useRefAudio" class="space-y-3 pt-1">
-          <input type="file" accept="audio/*" class="block w-full text-xs text-text-dim file:mr-3 file:rounded-md file:border-0 file:accent-gradient file:px-3 file:py-1.5 file:text-white" @change="onRefFileChange" />
+          <input type="file" accept="audio/*" class="block w-full text-xs text-text-dim file:me-3 file:rounded-md file:border-0 file:accent-gradient file:px-3 file:py-1.5 file:text-white" @change="onRefFileChange" />
           <p v-if="refAudioFile" class="text-xs text-text-dim">{{ refAudioFile.name }}</p>
 
           <ChipGroup v-model="taskType" :options="taskTypeOptions" />

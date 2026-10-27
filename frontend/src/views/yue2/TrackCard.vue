@@ -130,11 +130,11 @@ function copyParamsToForm() {
             :editable="job.dbId != null"
             @rename="(title) => store.renameJob(job, title)"
           />
-          <div class="ml-auto flex shrink-0 items-center gap-1">
-            <div v-if="job.status === 'done' && job.durationSec" class="mr-1 hidden border-r border-border/60 pr-3 text-right @min-[640px]:block">
+          <div class="ms-auto flex shrink-0 items-center gap-1">
+            <div v-if="job.status === 'done' && job.durationSec" class="me-1 hidden border-e border-border/60 pe-3 text-end @min-[640px]:block">
               <p class="text-sm font-semibold tabular-nums text-text" :title="`${Math.round(job.durationSec)} ${t('common.secondsUnit')}`">{{ formatClock(job.durationSec) }}</p>
             </div>
-            <StatusBadge v-if="job.status !== 'done'" :status="job.status" class="mr-1" />
+            <StatusBadge v-if="job.status !== 'done'" :status="job.status" class="me-1" />
             <button
               v-if="job.status === 'done' && job.audioUrl"
               type="button"

@@ -28,7 +28,7 @@ watch(() => props.progress.preview, async () => {
       <span v-if="counting(progress.stage)" class="tabular-nums text-text-dim">{{ t('promptProgress.tokens', { pct: progress.percent, n: progress.tokens }) }}</span>
       <button
         type="button"
-        class="ml-auto rounded-lg border border-border px-2.5 py-1 text-xs text-text-dim hover:border-status-failed/60 hover:text-status-failed disabled:opacity-50"
+        class="ms-auto rounded-lg border border-border px-2.5 py-1 text-xs text-text-dim hover:border-status-failed/60 hover:text-status-failed disabled:opacity-50"
         :disabled="stopping"
         @click="emit('stop')"
       >

@@ -42,7 +42,7 @@ onBeforeUnmount(() => store.stopBackgroundTasks())
     <template v-else>
       <ModelOfflineBanner v-if="!isRunning" model-id="stable_audio" :status="modelStatus" :error="modelError" />
       <RouterLink to="/models#stable-audio" class="inline-flex text-xs text-text-dim hover:text-text">
-        {{ t('sa3Weights.toggle', { n: modelCount }) }} →
+        {{ t('sa3Weights.toggle', { n: modelCount }) }} <span class="inline-block rtl:-scale-x-100" aria-hidden="true">→</span>
       </RouterLink>
     </template>
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-[480px_minmax(0,1fr)]">

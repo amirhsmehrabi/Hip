@@ -47,7 +47,7 @@ function onSize(e: Event) {
   <nav v-if="visible" :aria-label="t('pagination.label')" class="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-border bg-panel-2/50 px-3 py-2 text-xs">
     <span class="text-text-dim">{{ t('pagination.range', { from: rangeFrom, to: rangeTo, total }) }}</span>
 
-    <div class="ml-auto flex flex-wrap items-center gap-1">
+    <div class="ms-auto flex flex-wrap items-center gap-1">
       <button
         type="button"
         class="min-h-8 min-w-8 rounded-md border border-border px-2 py-1 text-text-dim hover:border-accent1/60 hover:text-text disabled:cursor-default disabled:opacity-40 disabled:hover:border-border disabled:hover:text-text-dim"
@@ -56,7 +56,7 @@ function onSize(e: Event) {
         :title="t('pagination.prev')"
         @click="emit('update:page', page - 1)"
       >
-        ‹
+        <span class="inline-block rtl:-scale-x-100" aria-hidden="true">‹</span>
       </button>
       <template v-for="(n, i) in items" :key="n ?? 'gap-' + i">
         <span v-if="n === null" class="px-1 text-text-dim" aria-hidden="true">…</span>
@@ -80,7 +80,7 @@ function onSize(e: Event) {
         :title="t('pagination.next')"
         @click="emit('update:page', page + 1)"
       >
-        ›
+        <span class="inline-block rtl:-scale-x-100" aria-hidden="true">›</span>
       </button>
     </div>
 

@@ -1093,7 +1093,7 @@ onBeforeRouteLeave((_to, _from, next) => {
 </script>
 
 <template>
-  <div class="flex min-h-0 w-full flex-1 flex-col gap-3 px-3 py-3 sm:px-4">
+  <div dir="ltr" class="flex min-h-0 w-full flex-1 flex-col gap-3 px-3 py-3 sm:px-4">
     <!-- Top toolbar -->
     <div class="flex flex-wrap items-center gap-3 shrink-0">
       <router-link to="/editor" class="text-xs text-text-dim hover:underline">{{ t('editor.backToProjects') }}</router-link>

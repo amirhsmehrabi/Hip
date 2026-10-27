@@ -409,7 +409,7 @@ async function onExport() {
         <section class="space-y-3 rounded-xl border border-border bg-panel p-5">
           <h2 class="text-lg font-semibold text-text">{{ t('lora.step3Title') }}</h2>
           <div class="max-h-96 overflow-auto rounded-lg border border-border">
-            <table class="w-full text-left text-xs">
+            <table class="w-full text-start text-xs">
               <thead class="sticky top-0 bg-panel-2 text-text-dim">
                 <tr>
                   <th class="p-2">{{ t('lora.colFile') }}</th>

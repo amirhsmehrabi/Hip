@@ -472,7 +472,7 @@ async function submit() {
         </div>
         <div class="space-y-2 rounded-lg border border-border bg-panel p-3">
           <p class="text-xs font-medium text-text">{{ t('yueGen.extractSectionTitle') }}</p>
-          <input type="file" accept="audio/*" class="block w-full text-xs text-text-dim file:mr-3 file:rounded-md file:border-0 file:accent-gradient file:px-3 file:py-1.5 file:text-white" @change="onCoverFileChange" />
+          <input type="file" accept="audio/*" class="block w-full text-xs text-text-dim file:me-3 file:rounded-md file:border-0 file:accent-gradient file:px-3 file:py-1.5 file:text-white" @change="onCoverFileChange" />
           <label class="flex items-center gap-2 text-xs text-text-dim">
             <input v-model="unloadSheetSage" type="checkbox" class="rounded border-border" />
             {{ t('yueGen.unloadSheetSage') }}
@@ -623,7 +623,7 @@ async function submit() {
                   <p class="mt-3 text-[13px] leading-relaxed">{{ f.text }}</p>
                   <!-- A ruler, not a slider: what "lower" and "higher" mean, the span's ends as numbers, and
                        the defaults as labelled ticks (audio above the line, score below it) -->
-                  <div class="mt-4 rounded-md border border-border/50 bg-panel/60 px-3 pb-2 pt-2.5">
+                  <div dir="ltr" class="mt-4 rounded-md border border-border/50 bg-panel/60 px-3 pb-2 pt-2.5">
                     <div class="flex justify-between text-xs text-text-dim">
                       <span>← {{ f.left }}</span>
                       <span>{{ f.right }} →</span>
@@ -631,13 +631,13 @@ async function submit() {
                     <div class="relative mt-7 h-0.5 rounded-full bg-border" :class="helpDefaults(f.key).abc ? 'mb-7' : 'mb-2'">
                       <!-- audio default: label, then a tick standing on the line -->
                       <div class="absolute bottom-0 flex flex-col" :class="tickAlign(scalePct(f.key, helpDefaults(f.key).semantic))" :style="tickStyle(scalePct(f.key, helpDefaults(f.key).semantic))">
-                        <span class="mb-0.5 whitespace-nowrap text-[11px] font-semibold leading-none tabular-nums text-accent1">{{ helpDefaults(f.key).semantic }}<span v-if="helpDefaults(f.key).abc" class="ml-1 font-normal text-text-dim">{{ t('yueGen.help.advanced.scaleSemantic') }}</span></span>
+                        <span class="mb-0.5 whitespace-nowrap text-[11px] font-semibold leading-none tabular-nums text-accent1">{{ helpDefaults(f.key).semantic }}<span v-if="helpDefaults(f.key).abc" class="ms-1 font-normal text-text-dim">{{ t('yueGen.help.advanced.scaleSemantic') }}</span></span>
                         <span class="h-2.5 w-0.5 rounded bg-accent1" aria-hidden="true"></span>
                       </div>
                       <!-- score default: a tick hanging from the line, then its label -->
                       <div v-if="helpDefaults(f.key).abc" class="absolute top-0 flex flex-col" :class="tickAlign(scalePct(f.key, helpDefaults(f.key).abc!))" :style="tickStyle(scalePct(f.key, helpDefaults(f.key).abc!))">
                         <span class="h-2.5 w-0.5 rounded bg-text-dim" aria-hidden="true"></span>
-                        <span class="mt-0.5 whitespace-nowrap text-[11px] font-semibold leading-none tabular-nums text-text">{{ helpDefaults(f.key).abc }}<span class="ml-1 font-normal text-text-dim">{{ t('yueGen.help.advanced.scaleAbc') }}</span></span>
+                        <span class="mt-0.5 whitespace-nowrap text-[11px] font-semibold leading-none tabular-nums text-text">{{ helpDefaults(f.key).abc }}<span class="ms-1 font-normal text-text-dim">{{ t('yueGen.help.advanced.scaleAbc') }}</span></span>
                       </div>
                     </div>
                     <div class="flex justify-between text-[11px] tabular-nums text-text-dim">
@@ -645,7 +645,7 @@ async function submit() {
                       <span>{{ HELP_SCALES[f.key].hi }}</span>
                     </div>
                   </div>
-                  <p class="mt-4 rounded-md bg-accent1/[0.07] px-3 py-2 text-[13px] leading-relaxed text-text"><span class="mr-1 text-accent1">→</span>{{ f.when }}</p>
+                  <p class="mt-4 rounded-md bg-accent1/[0.07] px-3 py-2 text-[13px] leading-relaxed text-text"><span class="me-1 inline-block text-accent1 rtl:-scale-x-100">→</span>{{ f.when }}</p>
                 </div>
               </div>
             </div>
@@ -668,7 +668,7 @@ async function submit() {
 
         <section class="rounded-lg border border-status-queued/30 bg-status-queued/[0.05] p-3">
           <h4 class="mb-1.5 text-sm font-semibold text-text">{{ t('yueGen.help.advanced.rulesTitle') }}</h4>
-          <ol class="list-decimal space-y-1.5 pl-4">
+          <ol class="list-decimal space-y-1.5 ps-4">
             <li v-for="x in (tm('yueGen.help.advanced.rules') as string[])" :key="x">{{ x }}</li>
           </ol>
         </section>

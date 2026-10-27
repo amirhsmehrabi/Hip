@@ -195,7 +195,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="flex items-center" :class="compact ? 'gap-2' : 'gap-3'">
+  <div dir="ltr" class="flex items-center" :class="compact ? 'gap-2' : 'gap-3'">
     <button
       type="button"
       class="flex shrink-0 items-center justify-center rounded-full accent-gradient text-white"

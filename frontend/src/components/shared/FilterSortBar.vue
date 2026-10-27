@@ -86,7 +86,7 @@ const PRESETS: { value: DatePreset; labelKey: string }[] = [
       </button>
     </div>
 
-    <div v-if="isFiltered" class="ml-auto flex items-center gap-2 text-text-dim">
+    <div v-if="isFiltered" class="ms-auto flex items-center gap-2 text-text-dim">
       <span>{{ t('filterSort.shownOf', { shown: visibleCount, total: totalCount }) }}</span>
       <button type="button" class="py-1 text-accent1 hover:underline" @click="emit('reset')">{{ t('filterSort.reset') }}</button>
     </div>

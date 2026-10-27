@@ -21,7 +21,7 @@ defineProps<{
 
 <template>
   <div class="overflow-x-auto rounded-lg border border-border/60">
-    <table class="w-full border-collapse text-left text-xs" :style="minWidth ? { minWidth } : undefined">
+    <table class="w-full border-collapse text-start text-xs" :style="minWidth ? { minWidth } : undefined">
       <thead v-if="columns.some((c) => c.label)" class="bg-panel-2/60 text-text">
         <tr>
           <th v-for="c in columns" :key="c.key" scope="col" class="px-3 py-2 font-semibold">{{ c.label }}</th>

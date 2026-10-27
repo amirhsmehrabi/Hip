@@ -41,7 +41,7 @@ const rows: LicenseRow[] = [
         <span><span class="font-medium text-text">Remiqora</span> · © {{ year }} {{ t('footer.author') }}</span>
       </div>
 
-      <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 sm:mr-auto">
+      <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 sm:me-auto">
         <span class="flex items-center gap-1.5" :title="t('footer.localHint')">
           <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3ZM9 12l2 2 4-4" />
@@ -61,7 +61,7 @@ const rows: LicenseRow[] = [
       <table class="w-full border-collapse text-xs">
         <tbody class="align-top">
           <tr v-for="r in rows" :key="r.name" class="border-b border-border/60">
-            <td class="w-1/3 py-2 pr-3 font-medium text-text">{{ r.name }}</td>
+            <td class="w-1/3 py-2 pe-3 font-medium text-text">{{ r.name }}</td>
             <td class="py-2">
               <a :href="r.url" target="_blank" rel="noopener" class="text-accent1 hover:underline">{{ r.license }}</a>
               <span class="mt-1 block">{{ t(r.note) }}</span>

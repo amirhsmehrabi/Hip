@@ -153,7 +153,7 @@ const bcMix = computed({
 
 <template>
   <!-- `change` bubbles from every range input and checkbox below and fires once on release, unlike `input`. -->
-  <div class="flex items-stretch rounded-xl border border-border/50 bg-panel-2/60 backdrop-blur-sm p-3 shadow-sm transition-colors hover:bg-panel-2/80 w-full gap-4" @change="emit('commit')">
+  <div dir="ltr" class="flex items-stretch rounded-xl border border-border/50 bg-panel-2/60 backdrop-blur-sm p-3 shadow-sm transition-colors hover:bg-panel-2/80 w-full gap-4" @change="emit('commit')">
     <!-- Volume & Pan Section -->
     <div class="flex flex-col w-36 shrink-0 border-r border-border/50 pr-3">
       <div class="flex items-center justify-between">

@@ -133,14 +133,14 @@ onBeforeUnmount(() => {
       </template>
       <span v-for="m in meters" :key="m.key" :class="props.stacked ? 'hidden xl:contents' : 'contents'">
         <span :class="props.stacked ? 'contents' : 'flex items-center gap-1.5'">
-          <span class="whitespace-nowrap text-left">{{ m.label }}</span>
+          <span class="whitespace-nowrap text-start">{{ m.label }}</span>
           <span class="flex h-1.5 w-12 overflow-hidden rounded-full bg-panel-2" role="progressbar" :aria-valuenow="pct(m.used, m.total)" aria-valuemin="0" aria-valuemax="100" :aria-label="m.label">
             <template v-if="m.key === 'vram' && segments.length">
               <span v-for="g in segments" :key="g.key" class="block h-full transition-[width] duration-500" :style="{ width: g.pct + '%', background: g.color }"></span>
             </template>
             <span v-else class="block h-full transition-[width] duration-500" :class="level(m.used, m.total)" :style="{ width: pct(m.used, m.total) + '%' }"></span>
           </span>
-          <span class="whitespace-nowrap text-right tabular-nums text-text" :class="props.stacked && 'hidden 2xl:inline'">{{ gb(m.used) }}<span class="text-text-dim">/{{ gb(m.total) }} {{ t('resources.unit') }}</span></span>
+          <span class="whitespace-nowrap text-end tabular-nums text-text" :class="props.stacked && 'hidden 2xl:inline'">{{ gb(m.used) }}<span class="text-text-dim">/{{ gb(m.total) }} {{ t('resources.unit') }}</span></span>
         </span>
       </span>
       <!-- a button, not a readout: the arrow says a click opens the details -->
@@ -152,7 +152,7 @@ onBeforeUnmount(() => {
       v-if="open"
       role="dialog"
       :aria-label="t('resources.title')"
-      class="absolute right-0 top-full z-50 mt-1 w-[min(24rem,calc(100vw-2rem))] space-y-3 rounded-xl border border-border bg-panel p-4 text-xs text-text shadow-xl"
+      class="absolute end-0 top-full z-50 mt-1 w-[min(24rem,calc(100vw-2rem))] space-y-3 rounded-xl border border-border bg-panel p-4 text-xs text-text shadow-xl"
     >
       <div v-if="ram">
         <div class="mb-1 flex items-center justify-between">

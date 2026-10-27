@@ -49,7 +49,7 @@ const retry = computed(() => props.download?.status === 'failed' || props.downlo
       <p class="truncate text-sm font-medium text-text">{{ name }}</p>
       <p v-if="hint" class="text-xs leading-relaxed text-text-dim">{{ hint }}</p>
     </div>
-    <span class="text-right text-xs tabular-nums text-text-dim">{{ t('models.size', { gb: gb(bytes, locale) }) }}</span>
+    <span class="text-end text-xs tabular-nums text-text-dim">{{ t('models.size', { gb: gb(bytes, locale) }) }}</span>
 
     <!-- downloaded -->
     <div v-if="installed" class="col-span-2 flex items-center justify-end gap-2 sm:col-span-1">
@@ -97,11 +97,11 @@ const retry = computed(() => props.download?.status === 'failed' || props.downlo
       >
         <DownloadIcon class="h-3.5 w-3.5" />{{ t(retry ? 'models.resume' : 'models.download') }}
       </button>
-      <p v-if="download?.status === 'failed'" class="max-w-xs text-right text-[11px] leading-relaxed text-status-failed" role="alert">
+      <p v-if="download?.status === 'failed'" class="max-w-xs text-end text-[11px] leading-relaxed text-status-failed" role="alert">
         <slot name="error">{{ download.error }}</slot>
       </p>
       <p v-else-if="download?.status === 'cancelled'" class="text-[11px] text-text-dim">{{ t('models.stopped') }}</p>
-      <p v-else-if="$slots.note" class="max-w-xs text-right text-[11px] leading-relaxed text-text-dim"><slot name="note" /></p>
+      <p v-else-if="$slots.note" class="max-w-xs text-end text-[11px] leading-relaxed text-text-dim"><slot name="note" /></p>
     </div>
   </li>
 </template>

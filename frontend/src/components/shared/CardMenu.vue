@@ -59,13 +59,13 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocumentPoin
     >
       <MoreIcon class="h-4 w-4" />
     </button>
-    <div v-if="open" role="menu" class="absolute right-0 top-full z-20 mt-1 min-w-64 rounded-lg border border-border bg-panel-2 p-1 shadow-lg">
+    <div v-if="open" role="menu" class="absolute end-0 top-full z-20 mt-1 min-w-64 rounded-lg border border-border bg-panel-2 p-1 shadow-lg">
       <button
         v-for="item in items"
         :key="item.key"
         type="button"
         role="menuitem"
-        class="block w-full rounded-md px-3 py-2 text-left text-sm hover:bg-panel"
+        class="block w-full rounded-md px-3 py-2 text-start text-sm hover:bg-panel"
         :class="item.danger ? (armed === item.key ? 'bg-status-failed/15 text-status-failed' : 'text-status-failed/90') : 'text-text'"
         @click="onItem(item)"
       >

@@ -168,7 +168,7 @@ onBeforeUnmount(() => {
   <div class="rounded-lg border border-border bg-panel-2">
     <button
       type="button"
-      class="flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left"
+      class="flex w-full items-start justify-between gap-3 px-3 py-2.5 text-start"
       :aria-expanded="expanded"
       @click="expanded = !expanded"
     >
@@ -176,7 +176,7 @@ onBeforeUnmount(() => {
         <span class="block text-sm font-semibold text-text">{{ t('midiPanel.title') }}</span>
         <span class="mt-0.5 block text-xs text-text-dim">{{ t('midiPanel.hint') }}</span>
       </span>
-      <span class="mt-1 shrink-0 text-text-dim" aria-hidden="true">{{ expanded ? '▾' : '▸' }}</span>
+      <span class="mt-1 shrink-0 text-text-dim" :class="!expanded && 'rtl:-scale-x-100'" aria-hidden="true">{{ expanded ? '▾' : '▸' }}</span>
     </button>
 
     <div v-if="expanded" class="space-y-2 border-t border-border/60 p-3">

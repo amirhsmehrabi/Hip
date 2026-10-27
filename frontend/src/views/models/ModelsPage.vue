@@ -198,15 +198,15 @@ onBeforeUnmount(() => store.unwatch())
           v-for="s in SECTIONS"
           :key="s.id"
           type="button"
-          class="relative flex shrink-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors lg:w-full"
+          class="relative flex shrink-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-start text-sm transition-colors lg:w-full"
           :class="[
             current === s.id ? 'bg-accent1/15 text-text' : 'text-text-dim hover:bg-panel-2 hover:text-text',
-            s.sub && 'lg:ml-3 lg:w-[calc(100%-0.75rem)]',
+            s.sub && 'lg:ms-3 lg:w-[calc(100%-0.75rem)]',
           ]"
           :aria-current="current === s.id ? 'page' : undefined"
           @click="select(s.id)"
         >
-          <span v-if="current === s.id" class="accent-gradient absolute inset-y-2 left-0 w-0.5 rounded-full" aria-hidden="true"></span>
+          <span v-if="current === s.id" class="accent-gradient absolute inset-y-2 start-0 w-0.5 rounded-full" aria-hidden="true"></span>
           <component :is="s.icon" class="h-4 w-4 shrink-0" :class="current === s.id ? 'text-accent1' : 'text-text-dim'" />
           <span class="min-w-0 flex-1 truncate" :class="current === s.id && 'font-medium'">{{ navTitle(s) }}</span>
           <span v-if="!s.sub && dotFor(s.engine, s.id)" class="h-1.5 w-1.5 shrink-0 rounded-full" :class="dotFor(s.engine, s.id)"></span>
@@ -358,8 +358,8 @@ onBeforeUnmount(() => store.unwatch())
                 <span class="h-1.5 w-1.5 rounded-full" :class="STATUS_DOT[store.cpu.status]"></span>{{ t(`models.status.${store.cpu.status}`) }}
               </span>
               <template v-if="store.cpu && cpuForm?.enabled">
-                <button v-if="store.cpu.status !== 'running'" type="button" class="ml-auto rounded-lg border border-border px-3 py-1.5 text-xs text-text hover:border-accent1 disabled:opacity-50" :disabled="store.cpu.status === 'starting'" @click="run(() => store.startCpu())">{{ t('models.cpu.start') }}</button>
-                <button v-else type="button" class="ml-auto rounded-lg border border-border px-3 py-1.5 text-xs text-text-dim hover:text-text" @click="run(() => store.stopCpu())">{{ t('models.cpu.stop') }}</button>
+                <button v-if="store.cpu.status !== 'running'" type="button" class="ms-auto rounded-lg border border-border px-3 py-1.5 text-xs text-text hover:border-accent1 disabled:opacity-50" :disabled="store.cpu.status === 'starting'" @click="run(() => store.startCpu())">{{ t('models.cpu.start') }}</button>
+                <button v-else type="button" class="ms-auto rounded-lg border border-border px-3 py-1.5 text-xs text-text-dim hover:text-text" @click="run(() => store.stopCpu())">{{ t('models.cpu.stop') }}</button>
               </template>
             </div>
             <p v-if="store.cpu && !store.cpu.available" class="mt-2 text-xs text-status-queued">{{ t('models.cpu.notAvailable') }}</p>

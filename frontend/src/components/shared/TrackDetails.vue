@@ -103,7 +103,7 @@ async function copy(what: 'style' | 'lyrics') {
           {{ copied === 'lyrics' ? t('trackDetails.copied') : t('trackDetails.copy') }}
         </button>
       </div>
-      <div class="max-h-80 overflow-y-auto rounded-md border-l-2 border-accent2/40 bg-panel/60 py-2 pl-3 pr-2 leading-relaxed">
+      <div class="max-h-80 overflow-y-auto rounded-md border-s-2 border-accent2/40 bg-panel/60 py-2 ps-3 pe-2 leading-relaxed">
         <template v-for="(row, i) in rows" :key="i">
           <p v-if="row.kind === 'section'" class="mb-0.5 mt-2 first:mt-0">
             <span class="inline-block rounded bg-accent2/15 px-1.5 py-0.5 text-xs font-medium text-accent2">{{ row.text }}</span>

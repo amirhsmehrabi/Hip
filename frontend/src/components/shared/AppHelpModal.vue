@@ -70,7 +70,7 @@ function go(to: string) {
       <!-- One engine on the GPU at a time -->
       <section class="rounded-lg border border-border/60 bg-panel-2/40 p-4">
         <h4 class="mb-1.5 text-sm font-semibold text-text">{{ t('header.guide.gpuTitle') }}</h4>
-        <ul class="list-disc space-y-1.5 pl-4">
+        <ul class="list-disc space-y-1.5 ps-4">
           <li v-for="x in (tm('header.guide.gpu') as string[])" :key="x">{{ x }}</li>
         </ul>
         <div class="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs">
@@ -100,7 +100,7 @@ function go(to: string) {
       <section>
         <h4 class="mb-2.5 text-sm font-semibold text-text">{{ t('header.guide.compareTitle') }}</h4>
         <div class="overflow-x-auto rounded-lg border border-border/60">
-          <table class="w-full min-w-[40rem] text-left text-xs">
+          <table class="w-full min-w-[40rem] text-start text-xs">
             <thead class="bg-panel-2/60 text-text">
               <tr>
                 <th class="w-[22%] px-3 py-2 font-medium"></th>
@@ -142,7 +142,7 @@ function go(to: string) {
       <div class="grid gap-3 sm:grid-cols-2">
         <section class="rounded-lg border border-accent1/25 bg-accent1/[0.06] p-3">
           <h4 class="mb-1.5 text-sm font-semibold text-text">{{ t('header.guide.tipsTitle') }}</h4>
-          <ul class="list-disc space-y-1.5 pl-4">
+          <ul class="list-disc space-y-1.5 ps-4">
             <li v-for="x in (tm('header.guide.tips') as string[])" :key="x">{{ x }}</li>
           </ul>
         </section>

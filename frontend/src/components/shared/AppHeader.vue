@@ -5,7 +5,7 @@ import { useRoute } from 'vue-router'
 import { useOrchestratorStore } from '../../stores/orchestrator'
 import { useFeaturesStore } from '../../stores/features'
 import { MODEL_FEATURE, MODEL_LABELS, MODEL_ROUTES, useModelSwitch } from '../../composables/useModelSwitch'
-import { setLocale, currentLocale, type LocaleCode } from '../../i18n'
+import { setLocale, LOCALES, type LocaleCode } from '../../i18n'
 import type { ModelId, ModelRuntimeStatus } from '../../types'
 import AppHelpModal from './AppHelpModal.vue'
 import EditorHelpModal from '../editor/EditorHelpModal.vue'
@@ -34,8 +34,8 @@ function openGuide(which: 'editor' | 'arranger' | 'idea') {
   guide.value = which
 }
 
-function toggleLocale() {
-  const next: LocaleCode = currentLocale() === 'ru' ? 'en' : 'ru'
+function changeLocale(event: Event) {
+  const next = (event.target as HTMLSelectElement).value as LocaleCode
   setLocale(next)
   locale.value = next
 }
@@ -60,7 +60,7 @@ const navEl = ref<HTMLElement | null>(null)
 const navMore = ref(false)
 function updateNavMore() {
   const nav = navEl.value
-  navMore.value = !!nav && nav.scrollLeft + nav.clientWidth < nav.scrollWidth - 4
+  navMore.value = !!nav && Math.abs(nav.scrollLeft) + nav.clientWidth < nav.scrollWidth - 4
 }
 async function showCurrentTab() {
   await nextTick()
@@ -159,7 +159,7 @@ async function onSelect(id: ModelId) {
       <nav
         ref="navEl"
         class="order-last flex h-12 min-w-0 basis-full items-stretch overflow-x-auto [scrollbar-width:none] sm:order-none sm:h-auto sm:basis-auto [&::-webkit-scrollbar]:hidden"
-        :class="navMore && '[mask-image:linear-gradient(to_right,#000_calc(100%-3rem),transparent)]'"
+        :class="navMore && '[mask-image:linear-gradient(to_right,#000_calc(100%-3rem),transparent)] rtl:[mask-image:linear-gradient(to_left,#000_calc(100%-3rem),transparent)]'"
         :aria-label="t('header.navLabel')"
         @scroll.passive="updateNavMore"
       >
@@ -183,7 +183,7 @@ async function onSelect(id: ModelId) {
             v-for="engine in ENGINES"
             :key="engine.id"
             type="button"
-            class="flex h-9 items-center gap-2 rounded-lg px-2 text-left transition-colors xl:px-3"
+            class="flex h-9 items-center gap-2 rounded-lg px-2 text-start transition-colors xl:px-3"
             :class="onEngine(engine.id) ? 'bg-panel text-text shadow-sm shadow-black/20' : 'text-text-dim hover:bg-panel/60 hover:text-text'"
             :title="engineTitle(engine.id)"
             :aria-current="onEngine(engine.id) ? 'page' : undefined"
@@ -210,18 +210,19 @@ async function onSelect(id: ModelId) {
         </router-link>
       </nav>
 
-      <div class="ml-auto flex shrink-0 items-center gap-1 self-center lg:ml-0 lg:justify-self-end">
+      <div class="ms-auto flex shrink-0 items-center gap-1 self-center lg:ms-0 lg:justify-self-end">
         <!-- RAM above video memory, always in sight (two rings on a narrow window); a click opens the details and
              the button that unloads the model -->
-        <ResourceMeters stacked class="mr-1 sm:mr-3" />
-        <button
-          type="button"
-          class="h-9 rounded-lg px-2.5 text-xs font-semibold text-text-dim transition-colors hover:bg-panel-2 hover:text-text"
+        <ResourceMeters stacked class="me-1 sm:me-3" />
+        <select
+          :value="locale"
+          class="h-9 cursor-pointer rounded-lg bg-transparent px-1.5 text-xs font-semibold text-text-dim transition-colors hover:bg-panel-2 hover:text-text"
           :title="t('header.language')"
-          @click="toggleLocale"
+          :aria-label="t('header.language')"
+          @change="changeLocale"
         >
-          {{ locale === 'ru' ? 'EN' : 'RU' }}
-        </button>
+          <option v-for="l in LOCALES" :key="l.code" :value="l.code" class="bg-panel text-text">{{ l.name }}</option>
+        </select>
         <!-- Models and settings: a settings page, so a gear beside the help rather than a tab next to the engines -->
         <router-link
           to="/models"

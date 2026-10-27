@@ -389,7 +389,7 @@ const guideOpen = ref(false)
 
       <!-- the engine -->
       <div class="mt-3 flex flex-wrap items-center gap-x-2 gap-y-2" role="radiogroup" :aria-label="t('idea.engine')">
-        <span class="mr-1 text-xs text-text-dim">{{ t('idea.engine') }}</span>
+        <span class="me-1 text-xs text-text-dim">{{ t('idea.engine') }}</span>
         <button
           v-for="e in ENGINES"
           :key="e.id"
@@ -427,10 +427,10 @@ const guideOpen = ref(false)
               <button type="button" class="text-accent1 underline disabled:opacity-50" :disabled="orchestrator.switching" @click="startAce">{{ t('idea.startAce') }}</button>
               · <RouterLink to="/models#assistant" class="text-accent1 underline">{{ t('idea.setupAssistant') }}</RouterLink>
             </template>
-            <span v-if="writing && writer === 'ace'" class="ml-1">{{ t('idea.writingAce') }}</span>
+            <span v-if="writing && writer === 'ace'" class="ms-1">{{ t('idea.writingAce') }}</span>
           </p>
         </div>
-        <div class="ml-auto flex shrink-0 items-center gap-2">
+        <div class="ms-auto flex shrink-0 items-center gap-2">
           <button
             type="button"
             class="rounded-lg border border-border px-3 py-2 text-sm text-text-dim transition-colors hover:border-text-dim hover:text-text disabled:pointer-events-none disabled:opacity-40"
@@ -536,12 +536,12 @@ const guideOpen = ref(false)
         <div class="flex flex-wrap items-center gap-3 border-t border-border pt-4">
           <span class="text-xs text-text-dim">{{ t('idea.variants') }}</span>
           <ChipGroup v-model="variants" small :options="variantOptions" />
-          <button type="button" class="ml-auto rounded-lg border border-border px-3 py-2 text-xs text-text-dim hover:border-text-dim hover:text-text" @click="openInForm">{{ t('idea.openInForm', { engine: MODEL_LABELS[engineInfo.model] }) }}</button>
+          <button type="button" class="ms-auto rounded-lg border border-border px-3 py-2 text-xs text-text-dim hover:border-text-dim hover:text-text" @click="openInForm">{{ t('idea.openInForm', { engine: MODEL_LABELS[engineInfo.model] }) }}</button>
           <button type="button" class="accent-gradient inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" :disabled="starting || orchestrator.switching || !draft.caption.trim()" @click="generate">
             {{ starting ? (engineRunning(draft.engine) ? t('idea.sending') : t('idea.startingEngine', { engine: MODEL_LABELS[engineInfo.model] })) : t('idea.generate') }}
           </button>
         </div>
-        <p v-if="!engineRunning(draft.engine) && orchestrator.activeModel && orchestrator.activeModel !== engineInfo.model" class="-mt-2 text-right text-[11px] text-text-dim">{{ t('aiPart.engineSwitchNote', { running: MODEL_LABELS[orchestrator.activeModel] }) }}</p>
+        <p v-if="!engineRunning(draft.engine) && orchestrator.activeModel && orchestrator.activeModel !== engineInfo.model" class="-mt-2 text-end text-[11px] text-text-dim">{{ t('aiPart.engineSwitchNote', { running: MODEL_LABELS[orchestrator.activeModel] }) }}</p>
       </div>
     </section>
 
