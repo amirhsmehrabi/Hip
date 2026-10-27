@@ -16,6 +16,22 @@
   let checkResult = null; // the last checks, kept so a change of parts only re-renders the screen
   const adding = params.get('state') === 'add';
 
+  // Same rule as the app itself: the first preferred language that has a translation wins, except that English
+  // followed by Russian anywhere in the list is Russian (people in Belarus or Kazakhstan often list en first).
+  const RTL = new Set(['ar', 'fa', 'he']);
+  const chooseLocale = (languages) => {
+    const supported = Object.keys(window.STRINGS);
+    const match = (tag) => {
+      tag = String(tag).toLowerCase();
+      if (tag.startsWith('zh')) return /^zh-(tw|hk|mo|hant)/.test(tag) ? 'zh-TW' : 'zh-CN';
+      if (tag.startsWith('pt')) return 'pt-BR';
+      return supported.find((code) => code.toLowerCase() === tag || code.toLowerCase() === tag.split('-')[0]);
+    };
+    const matches = languages.map(match).filter(Boolean);
+    if (matches[0] === 'en' && matches.includes('ru')) return 'ru';
+    return matches[0] || 'en';
+  };
+
   const fill = (s, vars) => s.replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? ''));
   const t = (key, vars = {}) => {
     const v = window.STRINGS[locale][key] ?? window.STRINGS.en[key] ?? key;
@@ -481,8 +497,9 @@
 
   (async function init() {
     ctx = await api.context();
-    locale = ctx.languages.some((lang) => String(lang).toLowerCase().startsWith('ru')) ? 'ru' : 'en';
+    locale = chooseLocale(ctx.languages);
     document.documentElement.lang = locale;
+    document.documentElement.dir = RTL.has(locale) ? 'rtl' : 'ltr';
     api.onEvent(onEvent);
     if (params.get('state') === 'crashed') return showCrashed(params.get('message') || '');
     runChecksAndShow();

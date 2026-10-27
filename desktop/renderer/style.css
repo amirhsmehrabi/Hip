@@ -34,7 +34,7 @@ h1 { margin: 0; font-weight: 800; font-size: clamp(1.6rem, 3.4vw, 2.1rem); line-
 .lead { max-width: 60ch; margin: 10px 0 0; color: var(--soft); }
 .rows { list-style: none; margin: 26px 0 0; padding: 0; border-top: 1px solid var(--hairline); }
 .rows > li { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 4px 14px; align-items: center; padding: 13px 0; border-bottom: 1px solid var(--hairline); }
-.rows .state { color: var(--mute); font-size: .875rem; text-align: right; }
+.rows .state { color: var(--mute); font-size: .875rem; text-align: end; }
 .rows .state.long { white-space: normal; max-width: 34ch; }
 .ico { width: 22px; height: 22px; color: var(--edge); }
 .ico.ok { color: var(--ok); } .ico.err { color: var(--err); } .ico.run { color: var(--violet); } .ico.warn { color: var(--warn); }
@@ -56,8 +56,8 @@ h1 { margin: 0; font-weight: 800; font-size: clamp(1.6rem, 3.4vw, 2.1rem); line-
 .note-line { grid-column: 2 / 4; margin-top: -2px; color: var(--mute); font-size: .8125rem; font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .note { margin: 18px 0 0; color: var(--mute); font-size: .9375rem; max-width: 66ch; }
-.steplist { margin: 22px 0 0; padding-left: 1.3em; color: var(--soft); max-width: 62ch; }
-.steplist li { margin: 8px 0; padding-left: 4px; }
+.steplist { margin: 22px 0 0; padding-inline-start: 1.3em; color: var(--soft); max-width: 62ch; }
+.steplist li { margin: 8px 0; padding-inline-start: 4px; }
 details { margin-top: 18px; color: var(--soft); }
 summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--violet); }
 details pre { margin: 6px 0 0; padding: 14px 16px; background: var(--panel); border: 1px solid var(--hairline); border-radius: 8px; overflow: auto; max-height: 220px; font: .8125rem/1.55 ui-monospace, 'Cascadia Mono', Consolas, monospace; white-space: pre-wrap; word-break: break-word; }
@@ -84,7 +84,7 @@ details pre { margin: 6px 0 0; padding: 14px 16px; background: var(--panel); bor
 .pick .what { display: flex; flex-direction: column; cursor: pointer; }
 .pick .name { font-weight: 600; }
 .pick .text { color: var(--mute); font-size: .875rem; }
-.pick .size { color: var(--mute); font-size: .875rem; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pick .size { color: var(--mute); font-size: .875rem; text-align: end; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .precs { grid-column: 2 / 4; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 24px; margin-top: 6px; }
 .precs .lbl { flex-basis: 100%; color: var(--mute); font-size: .8125rem; }
 .prec { display: flex; gap: 10px; align-items: flex-start; font-size: .875rem; cursor: pointer; max-width: 30ch; }
@@ -98,7 +98,7 @@ details pre { margin: 6px 0 0; padding: 14px 16px; background: var(--panel); bor
 /* Stable Audio 3: the gated checkpoints need a Hugging Face account, by browser sign-in or a pasted token. */
 .hf { grid-column: 2 / 4; margin-top: 10px; padding: 14px 16px; background: var(--panel); border: 1px solid var(--hairline); border-radius: 10px; font-size: .875rem; }
 .hf .text { margin: 0; }
-.hfsteps { margin: 8px 0 12px; padding-left: 20px; color: var(--soft); }
+.hfsteps { margin: 8px 0 12px; padding-inline-start: 20px; color: var(--soft); }
 .hfsteps li { margin: 4px 0; }
 .hfrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 8px 0; }
 .hfrow .lbl { color: var(--mute); }
