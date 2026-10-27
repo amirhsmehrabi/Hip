@@ -58,6 +58,20 @@ body {
   font: 15px/1.5 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
 }
 
+/* Chinese, Japanese, Korean: the regional font first, so each gets its own glyph forms. */
+html:lang(zh-CN) body {
+  font-family: 'Inter', system-ui, 'Microsoft YaHei UI', 'PingFang SC', 'Noto Sans CJK SC', sans-serif;
+}
+html:lang(zh-TW) body {
+  font-family: 'Inter', system-ui, 'Microsoft JhengHei UI', 'PingFang TC', 'Noto Sans CJK TC', sans-serif;
+}
+html:lang(ja) body {
+  font-family: 'Inter', system-ui, 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo', 'Noto Sans CJK JP', sans-serif;
+}
+html:lang(ko) body {
+  font-family: 'Inter', system-ui, 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans CJK KR', sans-serif;
+}
+
 #app {
   min-height: 100svh;
   display: flex;

@@ -4,6 +4,7 @@
 // names and dates only; the rest comes from each project's data, fetched alongside.
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { dateLocaleTag } from '../../i18n'
 import * as projectsApi from '../../api/projects'
 import type { ProjectSummary } from '../../api/projects'
 import { projectDuration, type TimelineProject } from '../../audio/timelineTypes'
@@ -106,17 +107,22 @@ function overviewOf(id: number): Overview | null {
   const o = overviews[id]
   return o && o !== 'failed' ? o : null
 }
-/** "1 клип", "3 клипа", "5 клипов": the locale's plural forms by Intl's plural category. */
+const PLURAL_ORDER = ['zero', 'one', 'two', 'few', 'many', 'other']
+/** "1 clip", "3 clips": the form for the count by the language's plural categories (Intl), one form per category in
+ *  the order zero, one, two, few, many, other; "other" is always the last form, so English needs two and Russian three. */
 function plural(n: number, key: string): string {
   const forms = tm(key) as string[]
-  const index = { one: 0, few: 1, many: 2 }[new Intl.PluralRules(localeTag.value).select(n) as 'one' | 'few' | 'many'] ?? forms.length - 1
-  return `${n} ${forms[Math.min(index, forms.length - 1)]}`
+  const rules = new Intl.PluralRules(localeTag.value)
+  const categories = PLURAL_ORDER.filter((c) => rules.resolvedOptions().pluralCategories.includes(c as Intl.LDMLPluralRule))
+  const category = rules.select(n)
+  const index = category === 'other' ? forms.length - 1 : categories.indexOf(category)
+  return `${n} ${forms[Math.min(Math.max(index, 0), forms.length - 1)]}`
 }
 function formatDuration(sec: number): string {
   const s = Math.round(sec)
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
-const localeTag = computed(() => (locale.value === 'ru' ? 'ru-RU' : 'en-US'))
+const localeTag = computed(() => dateLocaleTag(locale.value))
 /** Today and yesterday by name with the time; older by the date (the year only when it is not this one). */
 function formatModified(iso: string): string {
   const d = new Date(iso)

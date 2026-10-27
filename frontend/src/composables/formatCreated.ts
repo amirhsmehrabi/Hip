@@ -1,4 +1,4 @@
-import { i18n } from '../i18n'
+import { dateLocaleTag, i18n } from '../i18n'
 
 /** A track's length as a clock: 3:20, or 1:02:05 for an hour and more. */
 export function formatClock(totalSeconds: number | null | undefined): string {
@@ -16,7 +16,7 @@ const RU_MONTHS = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', '
 /** When a track was made, in words people use: "Today, 17:54", "Yesterday, 09:10", "30 Sep, 21:33", with the
  *  year added only for an older year. `full` is the exact timestamp for a tooltip. */
 export function formatCreated(timestamp: number): { label: string; full: string } {
-  const lang = String(i18n.global.locale.value) === 'ru' ? 'ru-RU' : 'en-US'
+  const lang = dateLocaleTag(String(i18n.global.locale.value))
   const when = new Date(timestamp)
   const now = new Date()
   const startOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()

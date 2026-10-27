@@ -34,9 +34,9 @@ function openGuide(which: 'editor' | 'arranger' | 'idea') {
   guide.value = which
 }
 
-function changeLocale(event: Event) {
+async function changeLocale(event: Event) {
   const next = (event.target as HTMLSelectElement).value as LocaleCode
-  setLocale(next)
+  await setLocale(next)
   locale.value = next
 }
 
