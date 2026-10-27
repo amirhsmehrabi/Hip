@@ -28,7 +28,7 @@ LANGUAGES = {
     "ur": "Urdu", "hi": "Hindi", "bn": "Bengali", "pa": "Punjabi", "ta": "Tamil", "te": "Telugu",
     "ne": "Nepali", "sa": "Sanskrit", "th": "Thai", "vi": "Vietnamese", "id": "Indonesian", "ms": "Malay",
     "tl": "Tagalog", "sw": "Swahili", "az": "Azerbaijani", "lt": "Lithuanian", "ca": "Catalan",
-    "ht": "Haitian Creole", "la": "Latin", "yue": "Cantonese",
+    "ht": "Haitian Creole", "la": "Latin", "yue": "Cantonese", "kk": "Kazakh",
 }
 
 
@@ -139,7 +139,7 @@ The lyrics must be in {lang}; only the tags are in English."""
 def yue2_song(generate: Generate, idea: str, language: str | None = None, seed: int | None = None) -> dict[str, Any]:
     lang = language_name(language, idea)
     last: Exception | None = None
-    for attempt in range(2):
+    for attempt in range(3):
         reply, _ = generate(YUE2_SONG.replace("{lang}", lang), idea, 900, 0.8, None if seed is None else seed + attempt)
         try:
             data = parse_json(reply)
@@ -169,7 +169,7 @@ def ace(generate: Generate, idea: str, instrumental: bool, language: str | None 
     lang = language_name(language, idea)
     rule = ACE_INSTRUMENTAL_LYRICS if instrumental else ACE_SONG_LYRICS.replace("{lang}", lang)
     last: Exception | None = None
-    for attempt in range(2):
+    for attempt in range(3):
         system = ACE.replace("{lyrics_rule}", rule) + (
             ACE_INSTRUMENTAL_NOTE if instrumental else ACE_SONG_NOTE.replace("{lang}", lang))
         reply, _ = generate(system, idea, 120 if instrumental else 900, 0.8,
