@@ -20,7 +20,7 @@
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-0f0f14?style=flat-square">
   <img alt="GPU" src="https://img.shields.io/badge/GPU-NVIDIA%20CUDA%20%7C%20Apple%20Metal-76B900?style=flat-square">
   <img alt="Stack" src="https://img.shields.io/badge/stack-Vue%203%20%2B%20FastAPI-a855f7?style=flat-square">
-  <img alt="UI languages" src="https://img.shields.io/badge/UI-EN%20%2F%20RU-ec4899?style=flat-square">
+  <img alt="UI languages" src="https://img.shields.io/badge/UI-20%20languages-ec4899?style=flat-square">
   <a href="https://ko-fi.com/inikolax"><img alt="Support on Ko-fi" src="https://img.shields.io/badge/Support-Ko--fi-FF5E5B?style=flat-square&logo=ko-fi&logoColor=white"></a>
 </p>
 
@@ -32,6 +32,7 @@
   <a href="#why-this-exists">Why</a> ·
   <a href="#whats-inside">What's inside</a> ·
   <a href="#from-an-idea">From an idea</a> ·
+  <a href="#languages">Languages</a> ·
   <a href="#ace-step-generation">ACE-Step</a> ·
   <a href="#yue2-and-sheetsage2-generation">YuE2</a> ·
   <a href="#stable-audio-3-generation">Stable Audio 3</a> ·
@@ -77,7 +78,7 @@ ACE-Step and YuE2 are two independent music generation engines, each with its ow
 | **AI arranger** | Adds a part (drums, bass, strings, keys, vocals and more) on top of the lanes you choose, repaints a section, continues the track or covers it in another style — each variant lands on its own lane. |
 | **Samples** | One-shots, loops at the project tempo and textures from a description (Stable Audio 3), auditioned in the editor and dropped onto a track. |
 
-The interface is fully bilingual (Russian/English). It starts in your system language, and the switcher in the header overrides it.
+Remiqora's interface and installer come in 20 languages: see [Languages](#languages).
 
 ---
 
@@ -94,6 +95,68 @@ The first tab in the header. Describe a song or an instrumental in your own word
 While the prompt is written, the page shows the stage, an estimated percent, the text as it grows and a *Stop* button. The prompt then opens as editable fields. *Generate* starts the engine if needed and sends the job; the track is named after the idea and lands in the engine's feed. *Open in the form* puts the prompt into the engine's own page for the settings this page leaves out, and the form takes it as soon as the engine has started. The idea and the prompt stay when you leave the page and after a reload.
 
 The assistant is Qwen3.5 (0.8B, 2B by default, or 4B; Apache-2.0), downloaded and set up on the Models page. On *auto* it writes on the GPU while no engine runs and on the CPU otherwise: a song's lyrics take about 10 s on the GPU and up to a minute on the CPU. On *GPU* it unloads the running engine to write, and *Generate* swaps the engine back. It starts with the first request and stops after a set idle time.
+
+---
+
+## Languages
+
+**Remiqora speaks 20 languages**: the interface, the help and guides, and the first-run installer. It starts in your system language (the switcher in the header overrides it) and loads a language only when you pick it.
+
+| | |
+|---|---|
+| **Hand-written** | Русский · English |
+| **Europe** | Español · Português (Brasil) · Deutsch · Français · Italiano · Polski · Українська · Türkçe |
+| **Asia** | Қазақша · 简体中文 · 繁體中文 · 日本語 · 한국어 · Tiếng Việt · Bahasa Indonesia · हिन्दी |
+| **Right-to-left** | العربية · فارسی · עברית |
+
+> **Every language except Russian and English is a machine translation.** A large language model translated 1,831 interface strings and 140 installer strings per language; scripts checked that every key and placeholder matches the English text. No native speaker has read them, so expect clumsy phrasing and wrong terms, most of all in the rarer languages. Traditional Chinese is converted from Simplified with OpenCC. Corrections are welcome.
+
+Arabic, Persian and Hebrew mirror the whole layout. The timeline, waveform and mixer stay left-to-right on purpose: time and signal flow do not mirror.
+
+### Ideas and songs in any language
+
+- **From an idea** works in all 20 languages and in the 51 vocal languages of the *Lyrics language* list. The language of your idea is recognised from its alphabet, its special letters and its most frequent words (checked on 65 texts in 20 languages with no misses); when it is ambiguous, pick the language by hand.
+- **Kazakh** is not on ACE-Step's own list, so it was tested: with the `kk` tag ACE-Step sings it as well as with `ru` (average error 0.45 against 0.43 over nine seeds each), so `kk` is sent as it is.
+- **Quality follows the model.** The default assistant (Qwen3.5-2B) writes in the requested language every time, but its verse in Kazakh or Hindi is clumsy; the 4B model on the Models page does noticeably better.
+
+### What was tested (October 2026)
+
+**The prompt assistant.** An idea written in each of the 20 languages was sent to the assistant twice, for a YuE2 song and for an ACE-Step song. A language detector confirmed that the lyrics came back in the requested language in every reply (it called Indonesian "Malay"; the text is Indonesian). About 7 % of requests (3 of 40) first failed on invalid JSON from the small model, in English as well, so the assistant now tries three times instead of two; 24 repeat runs were clean.
+
+**Real songs.** One short song with the same four-line text, translated into each language, was generated in **ACE-Step** (48 s) and in **YuE2** (22-51 s), the vocal was separated with Demucs, and **Whisper large-v3** transcribed it. The table shows how much of the reference text was found in the transcript.
+
+<details>
+<summary><b>Share of the lyrics Whisper found in each song</b></summary>
+
+| Language | ACE-Step | YuE2 |
+|---|--:|--:|
+| English | 70 % | 100 % |
+| Русский | 56 % | 99 % |
+| Español | 71 % | 100 % |
+| Português | 82 % | 98 % |
+| Deutsch | 76 % | 100 % |
+| Français | 78 % | 100 % |
+| Italiano | 92 % | 100 % |
+| Polski | 79 % | 100 % |
+| Українська | 91 % | 89 % |
+| Türkçe | 10 % | 96 % |
+| 中文 | 0 % | 94 % |
+| 日本語 | 14 % | 95 % |
+| 한국어 | 48 % | 93 % |
+| Tiếng Việt | 44 % | 27 % |
+| Bahasa Indonesia | 18 % | 100 % |
+| हिन्दी | 64 % | 91 % |
+| العربية | 20 % | 67 % |
+| فارسی | 70 % | 84 % |
+| עברית | 10 % | 97 % |
+| Қазақша | 83 % | 79 % |
+| **average** | **54 %** | **90 %** |
+
+Read it as a direction, not a verdict: one song per language and engine, Whisper itself is unreliable on singing, and a low ACE-Step figure (Chinese, Japanese, Turkish, Hebrew) means "not recognised in this sample", not "unsupported": in short clips the vocal often starts late. YuE2 sang the text in almost every language, including ones its authors do not list; its extra "hey, oh" fills were not counted against it.
+
+</details>
+
+The test songs are not part of the repository.
 
 ---
 
@@ -465,6 +528,7 @@ CUDA_BIN_DIR=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.4\bin
 
 ## Known limitations
 
+- The interface and installer are machine-translated into 18 languages (Russian and English are hand-written); no native speaker has reviewed them. The prompt assistant's lyrics in rarer languages are only as good as the 2B model that writes them.
 - The engines (ACE-Step, YuE2, Stable Audio 3) switch exclusively by default. On multi-GPU Linux hosts, explicitly setting every `*_DEVICE` (`ACE_STEP_DEVICE`, `YUE2_DEVICE`, `STABLE_AUDIO_DEVICE`) to different device values opts into concurrent residency and pins each engine to its own GPU.
 - Stable Audio 3 is instrumental only (no vocals), up to 380 s per task with the medium model, and its `medium` checkpoint needs a CUDA GPU with Flash Attention (prebuilt wheels are pinned for Windows and Linux; on macOS only the small models run). It cannot add a part over a mix: the arranger's "Add a part" stays with ACE-Step. Its main checkpoints are gated: a free Hugging Face account, the licence accepted once and a token are needed to download them.
 - MIDI transcription requires YuE2 specifically to be active (the MuScriptor model loads into its process).
